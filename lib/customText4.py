@@ -161,10 +161,11 @@ def f_utf8_print(dst, *args):
 
 
 def f_sprintf(dst, *args):  # 버전 호환 f_dbstr_print
+    ret = EUDVariable()
     if EUDIf()(f_is116()):
-        ret = f_cp949_print(dst, *args)
+        ret << f_cp949_print(dst, *args)
     if EUDElse()():
-        ret = f_utf8_print(dst, *args)
+        ret << f_utf8_print(dst, *args)
     EUDEndIf()
 
     return ret
@@ -348,7 +349,7 @@ def f_addstr_epd(dstp, src):
         EUDEndIf()
         dstp += 1
     EUDEndInfLoop()
-    EUDReturn(dstp)
+    return dstp
 
 
 def f_addbyte_epd(dstp, b):
@@ -464,10 +465,11 @@ def f_utf8_print_epd(dstp, *args):
 
 
 def f_sprintf_epd(dstp, *args):
+    ret = EUDVariable()
     if EUDIf()(f_is116()):
-        ret = f_cp949_print_epd(dstp, *args)
+        ret << f_cp949_print_epd(dstp, *args)
     if EUDElse()():
-        ret = f_utf8_print_epd(dstp, *args)
+        ret << f_utf8_print_epd(dstp, *args)
     EUDEndIf()
 
     return ret
