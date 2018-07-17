@@ -1,0 +1,15 @@
+function PixelMoveLocation(locid, x, y, size) {
+    SetMemory(0x58DC60 + locid * 20 + 0x0, SetTo, x - size);
+    SetMemory(0x58DC60 + locid * 20 + 0x4, SetTo, y - size);
+    SetMemory(0x58DC60 + locid * 20 + 0x8, SetTo, x + size);
+    SetMemory(0x58DC60 + locid * 20 + 0xC, SetTo, y + size);
+}
+
+
+function beforeTriggerExec() {
+    const cursor = $L("Cursor");
+    const screenX, screenY = dwread_epd_safe(EPD(0x62848C)), dwread_epd_safe(EPD(0x6284A8));
+    const mouseX, mouseY = dwread_epd_safe(EPD(0x6CDDC4)), dwread_epd_safe(EPD(0x6CDDC8));
+    const x, y = screenX + mouseX, screenY + mouseY;
+    PixelMoveLocation(cursor, x, y, 32);
+}
