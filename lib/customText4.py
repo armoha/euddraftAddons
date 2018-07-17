@@ -265,14 +265,14 @@ def f_init():
         SetMemory(AddSTR_ptr + 20, SetTo, STR_ptr),
         SetMemory(AddSTR_epd + 20, SetTo, STR_epd)
     ])
-    strmod = 4 - f_strptr(1) % 4
+    strmod = 4 - f_strptr(strBuffer) % 4
     if EUDIf()(strmod < 4):
         string_offset = f_wread_epd(STR_epd + strBuffer // 2, strBuffer % 2)
         f_wwrite_epd(STR_epd + strBuffer // 2, strBuffer % 2, string_offset + strmod)
     EUDEndIf()
     DoActions([
-        SetMemory(write_ptr + 20, SetTo, f_strptr(1)),
-        SetMemory(write_epd + 20, SetTo, EPD(f_strptr(1)))
+        SetMemory(write_ptr + 20, SetTo, f_strptr(strBuffer)),
+        SetMemory(write_epd + 20, SetTo, EPD(f_strptr(strBuffer)))
     ])
     f_reset()
     f_setlocalcp()  # Forward Not initialized 방지
@@ -303,8 +303,16 @@ def f_printError(player):
     ])
 
 
+@EUDFunc
+def f_chatdst_EUDVar(line):
+    EUDReturn(0x640B60 + 218 * line)
+
+
 def f_chatdst(line):
-    return 0x640B60 + 218 * line
+    if isUnproxyInstance(line, int):
+        return 0x640B60 + 218 * line
+    else:
+        return f_chatdst_EUDVar(line)
 
 
 def f_addChat(*args):
