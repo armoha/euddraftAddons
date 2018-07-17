@@ -1,4 +1,5 @@
 from eudplib import *
+import atexit
 import customText4 as ct
 import re
 from itertools import combinations_with_replacement, cycle
@@ -59,7 +60,6 @@ def f_write_identifier(identifier):
 
 def f_reset(*args):
     key = str(args)
-    # key = re.sub(r'<(\S* object) at 0x[0-9A-F]+>', r'<\1>', key)
     reset_keys.add(key)
     if key not in timers:
         timers[key] = EUDVariable()
@@ -327,4 +327,4 @@ def _warning():
                 "수동 reset 필요; need manual reset for timer: {}".format(key))
 
 
-_warning()
+atexit.register(_warning)
