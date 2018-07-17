@@ -217,8 +217,7 @@ def f_effectBase(*args, line=0, autoreset=True, timer=None):
         @EUDFunc
         def f_write_ct_str():
             ct.f_addText_epd(*ct_args)
-            txtlen = ct.epd - start
-            return txtlen
+            EUDReturn(ct.epd - start)
 
         cts[ct_key] = f_write_ct_str
     txtlen = cts[ct_key]()
@@ -243,7 +242,7 @@ def f_fadein(*args, color=None, interval=1, line=0, autoreset=True, timer=None):
 
     ret = EUDVariable()
 
-    if EUDIf()(_timer == txtlen + len(color) - 2):
+    if EUDIf()(_timer >= txtlen + len(color) - 2):
         ret << 1
     if EUDElse()():
         ret << 0
@@ -255,13 +254,13 @@ def f_fadein(*args, color=None, interval=1, line=0, autoreset=True, timer=None):
 
     _interval += 1
     RawTrigger(
-        conditions=_interval.Exactly(interval),
+        conditions=_interval.AtLeast(interval),
         actions=[
             _interval.SetNumber(0),
             _timer.AddNumber(1)
         ]
     )
-    if EUDIf()(_timer == txtlen + len(color) - 1):
+    if EUDIf()(_timer >= txtlen + len(color) - 1):
         _timer -= 1
     EUDEndIf()
 
@@ -287,11 +286,12 @@ def f_fadeout(*args, color=None, interval=1, line=0, autoreset=True, timer=None)
 
     ret = EUDVariable()
 
-    if EUDIf()(_timer == txtlen + len(color) - 2):
+    if EUDIf()(_timer >= txtlen + len(color) - 2):
         ret << 1
     if EUDElse()():
         ret << 0
     EUDEndIf()
+
     if EUDIf()(_timer >= 1):
         s = txtlen + len(color) - 2 - _timer
         for i, c in enumerate(color):
@@ -302,13 +302,13 @@ def f_fadeout(*args, color=None, interval=1, line=0, autoreset=True, timer=None)
 
     _interval += 1
     RawTrigger(
-        conditions=_interval.Exactly(interval),
+        conditions=_interval.AtLeast(interval),
         actions=[
             _interval.SetNumber(0),
             _timer.AddNumber(1)
         ]
     )
-    if EUDIf()(_timer == txtlen + len(color) - 1):
+    if EUDIf()(_timer >= txtlen + len(color) - 1):
         _timer -= 1
     EUDEndIf()
 
