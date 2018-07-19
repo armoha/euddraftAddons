@@ -3,6 +3,13 @@ import atexit
 import customText4 as ct
 import re
 from itertools import combinations_with_replacement, cycle
+'''
+texteffect.py 0.2.0
+
+0.1.0 - inital release.
+0.2.0 - corrected issue: fixed-line display doesn't remove previous text.
+        return 0 when effect is over, return 1 when effect is ongoing.
+'''
 
 TICK = EPD(0x57F23C)
 
@@ -107,14 +114,23 @@ def f_display():
 
 
 @EUDFunc
-def f_setTxtPtr(line, identifier):
-    dst = ct.f_chatepd(f_dwread_cp(0))
-    if EUDIf()(MemoryEPD(dst, Exactly, identifier)):
+def f_setTxtPtr(line, identifier1, identifier2):
+    prev = f_dwread_cp(0)
+    dst = ct.f_chatepd(prev)
+    f_start_to_ct()
+    if EUDIf()(prev % 2 == 0):
+        if EUDIf()(MemoryEPD(dst, Exactly, identifier1)):
+            f_dwwrite_epd(dst, 0)
+        EUDEndIf()
+    if EUDElseIf()(
+        EUDSCAnd()
+                (MemoryEPD(dst, AtMost, identifier2 + 0xFFFF))
+                (MemoryEPD(dst, AtLeast, identifier2))()
+    ):
         f_dwwrite_epd(dst, 0)
     EUDEndIf()
     f_floorTxtPtr(line)
     f_dwwrite_cp(0, f_dwread_epd(EPD(0x640B58)))
-    f_start_to_ct()
 
 
 @EUDFunc
@@ -192,7 +208,7 @@ def f_effectBase(*args, line=0, autoreset=True, timer=None):
             ct.f_getoldcp()
             f_setcurpl(EPD(prev.getValueAddr()))
             if EUDIf()(line <= 10):
-                f_setTxtPtr(line, identifier)
+                f_setTxtPtr(line, identifier, i2)
             if EUDElse()():
                 f_setPrevTxtPtr(identifier, i2)
             EUDEndIf()
@@ -204,7 +220,7 @@ def f_effectBase(*args, line=0, autoreset=True, timer=None):
         ct.f_getoldcp()
         f_setcurpl(EPD(prev.getValueAddr()))
         if line >= 0 and line <= 10:
-            f_setTxtPtr(line, identifier)
+            f_setTxtPtr(line, identifier, i2)
         else:
             f_setPrevTxtPtr(identifier, i2)
         ct.f_setoldcp()
@@ -243,9 +259,9 @@ def f_fadein(*args, color=None, interval=1, line=0, autoreset=True, timer=None):
     ret = EUDVariable()
 
     if EUDIf()(_timer >= txtlen + len(color) - 2):
-        ret << 1
-    if EUDElse()():
         ret << 0
+    if EUDElse()():
+        ret << 1
         for i, c in enumerate(color):
             if EUDIf()([_timer >= i, _timer <= txtlen + i - 1]):
                 f_bwrite_epd(start + _timer - i, 3, c)
@@ -287,9 +303,9 @@ def f_fadeout(*args, color=None, interval=1, line=0, autoreset=True, timer=None)
     ret = EUDVariable()
 
     if EUDIf()(_timer >= txtlen + len(color) - 2):
-        ret << 1
-    if EUDElse()():
         ret << 0
+    if EUDElse()():
+        ret << 1
     EUDEndIf()
 
     if EUDIf()(_timer >= 1):
