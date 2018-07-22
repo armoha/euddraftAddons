@@ -2,6 +2,12 @@ from eudplib import *
 from eudplib.eudlib.stringf.rwcommon import br1, bw1
 import eudplib.eudlib.stringf.cputf8 as cputf
 import math
+"""
+customText 0.1.1
+
+0.1.0 initial release
+0.1.1 fix EUD error when modify stat_txt.tbl
+"""
 
 setoldcp, setlocalcp = Forward(), Forward()
 ptr, epd, cp = EUDCreateVariables(3)
@@ -16,9 +22,6 @@ strBuffer = 1
 STR_ptr, STR_epd = EUDCreateVariables(2)
 AddSTR_ptr, AddSTR_epd, write_ptr, write_epd = [Forward() for i in range(4)]
 chatptr, chatepd = EUDCreateVariables(2)
-TBL_ptr, TBL_epd = EUDCreateVariables(2)
-AddTBL_ptr, AddTBL_epd = Forward(), Forward()
-TBLUsed = 0
 
 
 @EUDFunc
@@ -81,7 +84,7 @@ def f_cp949_to_utf8_copy(dst, src, flag='ptr'):
                 elif flag == 'epd':
                     c1 = 0b11000000 | (code // (1 << 6)) & 0b11111
                     c2 = 0b10000000 | (code // (1 << 0)) & 0b111111
-                    f_dwwrite_epd(dstp, c1 + c2 * 256 + 0xD0D0000)
+                    f_dwwrite_epd(dst, c1 + c2 * 256 + 0xD0D0000)
             if EUDElse()():  # Encode as 3-byte
                 if flag == 'ptr':
                     bw1.writebyte(0b11100000 | (code // (1 << 12)) & 0b1111)
@@ -92,7 +95,7 @@ def f_cp949_to_utf8_copy(dst, src, flag='ptr'):
                     c1 = 0b11100000 | (code // (1 << 12)) & 0b1111
                     c2 = 0b10000000 | (code // (1 << 6)) & 0b111111
                     c3 = 0b10000000 | (code // (1 << 0)) & 0b111111
-                    f_dwwrite_epd(dstp, c1 + c2 * 256 + c3 * 65536 + 0xD000000)
+                    f_dwwrite_epd(dst, c1 + c2 * 256 + c3 * 65536 + 0xD000000)
             EUDEndIf()
         EUDEndIf()
         if flag == 'epd':
@@ -263,7 +266,7 @@ def f_init():
         SetMemory(setlocalcp + 20, SetTo, localcp),
         cp.SetNumber(localcp),
         SetMemory(AddSTR_ptr + 20, SetTo, STR_ptr),
-        SetMemory(AddSTR_epd + 20, SetTo, STR_epd)
+        SetMemory(AddSTR_epd + 20, SetTo, STR_epd),
     ])
     strmod = 4 - f_strptr(strBuffer) % 4
     if EUDIf()(strmod < 4):
@@ -275,8 +278,11 @@ def f_init():
         SetMemory(write_epd + 20, SetTo, EPD(f_strptr(strBuffer)))
     ])
     f_reset()
-    f_setlocalcp()  # Forward Not initialized 방지
+    f_setlocalcp()  # prevent Forward Not initialized
     f_setoldcp()
+    if EUDIf()(Never()):
+        f_TBLinit()
+    EUDEndIf()
 
 
 EUDOnStart(f_init)
@@ -324,7 +330,7 @@ def f_chatprint(line, *args):
 
 
 def f_chatprintP(player, line, *args):
-    if line == 12:
+    if isinstance(line, int) and line == 12:
         f_printError(player)
     if isinstance(player, int) and player >= 8:
         f_chatprint(line, *args)
@@ -377,7 +383,7 @@ def f_strbyte_epd(dstp, s, encoding='UTF-8'):
 def f_add1c_epd(dstp, s, encoding='UTF-8'):
     string = ""
     color = ""
-    for n, c in enumerate(s):
+    for c in s:
         c_ = c.encode(encoding)
         c_b2i = b2i(c_)
         if (c_b2i >= 0x01 and c_b2i <= 0x1F and
@@ -387,7 +393,7 @@ def f_add1c_epd(dstp, s, encoding='UTF-8'):
         if string == "" and color != "":
             string += "\x0D\x0D\x0D"
         string += color + c
-        for i in range(3 - len(c_)):
+        for _ in range(3 - len(c_)):
             string += "\x0D"
 
     return f_strbyte_epd(dstp, string, encoding)
@@ -615,34 +621,54 @@ def f_dbstr_print2(dst, length, *args):
     return dst
 
 
+TBL_ptr, TBL_epd = EUDCreateVariables(2)
+AddTBL_ptr, AddTBL_epd = Forward(), Forward()
+_initTbl = EUDLightVariable(0)
+_tbl_start, _tbl_end, _return_from_whence_thou_camst = Forward(), Forward(), Forward()
+
+
 @EUDFunc
 def f_tblptr(tblID):
     r, m = f_div(tblID, 2)
     RawTrigger(actions=AddTBL_epd << r.AddNumber(0))
     ret = f_wread_epd(r, m * 2)  # strTable_epd + r
     RawTrigger(actions=AddTBL_ptr << ret.AddNumber(0))
-    EUDReturn(ret)  # tbl_ptr + tblOffset
-    global TBLUsed
-    TBLUsed += 1
-
-
-def f_setTbl(tblID, offset, length, *args):
-    dst = f_tblptr(tblID) + offset
-    dst = f_dbstr_print2(dst, length, *args)
-    global TBLUsed
-    TBLUsed += 1
+    return ret  # tbl_ptr + tblOffset
 
 
 def f_TBLinit():
+    _tbl_start << NextTrigger()
     SetVariables([TBL_ptr, TBL_epd],
                  f_dwepdread_epd(EPD(0x6D5A30)))
     DoActions([
         SetMemory(AddTBL_epd + 20, SetTo, TBL_epd),
         SetMemory(AddTBL_ptr + 20, SetTo, TBL_ptr)])
 
+    f_print("\x13\x07tbl ptr: \x16", hptr(TBL_ptr))
+    f_tblptr(0)  # prevent Forward Not initialized
+    _tbl_end << RawTrigger(
+        actions=[
+            _initTbl.SetNumber(1),
+            _return_from_whence_thou_camst << SetNextPtr(0xEDAC, 0xF001)
+        ]
+    )
 
-if TBLUsed >= 1:
-    EUDOnStart(f_TBLinit)
+
+def f_setTbl(tblID, offset, length, *args):
+    _is_tbl_init, _next = Forward(), Forward()
+    _is_tbl_init << RawTrigger(
+        conditions=_initTbl.Exactly(0),
+        actions=[
+            SetNextPtr(_is_tbl_init, _tbl_start),
+            SetNextPtr(_tbl_end, _next),
+            SetMemory(_return_from_whence_thou_camst + 16, SetTo, EPD(_is_tbl_init + 4)),
+            SetMemory(_return_from_whence_thou_camst + 20, SetTo, _next)
+        ]
+    )
+    _next << NextTrigger()
+    dst = f_tblptr(tblID) + offset
+    f_dbstr_print2(dst, length, *args)
+
 
 chkt = GetChkTokenized()
 STR = chkt.getsection('STR')
