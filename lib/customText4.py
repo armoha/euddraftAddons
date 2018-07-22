@@ -3,10 +3,11 @@ from eudplib.eudlib.stringf.rwcommon import br1, bw1
 import eudplib.eudlib.stringf.cputf8 as cputf
 import math
 """
-customText 0.1.1
+customText 0.1.2
 
+0.1.2 fix EUD error when modify stat_txt.tbl
+0.1.1 fix bug; ct.epd/ptr set to 0 in SC 1.16
 0.1.0 initial release
-0.1.1 fix EUD error when modify stat_txt.tbl
 """
 
 setoldcp, setlocalcp = Forward(), Forward()
@@ -644,7 +645,6 @@ def f_TBLinit():
         SetMemory(AddTBL_epd + 20, SetTo, TBL_epd),
         SetMemory(AddTBL_ptr + 20, SetTo, TBL_ptr)])
 
-    f_print("\x13\x07tbl ptr: \x16", hptr(TBL_ptr))
     f_tblptr(0)  # prevent Forward Not initialized
     _tbl_end << RawTrigger(
         actions=[
