@@ -3,8 +3,9 @@ from eudplib.eudlib.stringf.rwcommon import br1, bw1
 import eudplib.eudlib.stringf.cputf8 as cputf
 import math
 """
-customText 0.1.2
+customText 0.1.3
 
+0.1.3 fix f_add1c_epd makes malaligned string when 1 byte chars are used with no color code
 0.1.2 fix EUD error when modify stat_txt.tbl
 0.1.1 fix bug; ct.epd/ptr set to 0 in SC 1.16
 0.1.0 initial release
@@ -384,18 +385,25 @@ def f_strbyte_epd(dstp, s, encoding='UTF-8'):
 def f_add1c_epd(dstp, s, encoding='UTF-8'):
     string = ""
     color = ""
-    for c in s:
+    for i, c in enumerate(s):
         c_ = c.encode(encoding)
-        c_b2i = b2i(c_)
-        if (c_b2i >= 0x01 and c_b2i <= 0x1F and
-                c_b2i != 0x12 and c_b2i != 0x13):
+        ci = b2i(c_)
+        if (ci >= 0x01 and ci <= 0x1F and
+                ci != 0x12 and ci != 0x13):
             color = c
+            if i - 1 == len(s):
+                string += color
             continue
+
         if string == "" and color != "":
             string += "\x0D\x0D\x0D"
         string += color + c
+
         for _ in range(3 - len(c_)):
             string += "\x0D"
+
+        if color == "":
+            color = "\x0D"
 
     return f_strbyte_epd(dstp, string, encoding)
 
