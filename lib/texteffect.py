@@ -2,13 +2,14 @@ from eudplib import *
 import atexit
 import customText4 as ct
 import re
-from itertools import combinations_with_replacement, cycle
+import itertools
 '''
-texteffect.py 0.2.0
+texteffect.py 0.2.1
 
-0.1.0 - inital release.
+0.2.1 - reduce trigger amount. increase identifiers from 253 to 113379904.
 0.2.0 - corrected issue: fixed-line display doesn't remove previous text.
         return 0 when effect is over, return 1 when effect is ongoing.
+0.1.0 - inital release.
 '''
 
 TICK = EPD(0x57F23C)
@@ -19,18 +20,13 @@ effect_keys = set()
 reset_keys = set()
 cts = dict()
 alert_manual_reset = set()
-identifiers = [
-    u2b(2 * (c[0] + c[1]))
-    for c in combinations_with_replacement(
-        [
-            "\x02", "\x03", "\x04", "\x06",
-            "\x07", "\x08", "\x0D", "\x0E", "\x0F",
-            "\x10", "\x11", "\x15", "\x16", "\x17",
-            "\x18", "\x19", "\x1A", "\x1B", "\x1C",
-            "\x1D", "\x1E", "\x1F"
-        ], 2)
-]
-identifier_gen = cycle(identifiers)
+identifiers = itertools.product(
+        ["\x02", "\x03", "\x04", "\x06",
+         "\x07", "\x08", "\x0D", "\x0E", "\x0F",
+         "\x10", "\x11", "\x15", "\x16", "\x17",
+         "\x18", "\x19", "\x1A", "\x1B", "\x1C",
+         "\x1D", "\x1E", "\x1F"], repeat=6)
+identifier_gen = itertools.cycle(identifiers)
 start = EUDVariable()
 
 
@@ -48,29 +44,34 @@ def _init():
 
 
 EUDOnStart(_init)
+odds_1, odds_2, even_1, even_2 = EUDCreateVariables(4)
 
 
-def process_args_for_ct(*args):
+def f_process_args_for_ct(*args):
     ct_args = tuple(ct.f_1c(x) if isUnproxyInstance(x, str)
                     else x for x in args)
     return ct_args
 
 
 @EUDFunc
-def f_write_identifier(identifier):
+def f_write_identifier():
     DoActions([
-        SetMemoryEPD(ct.epd, SetTo, identifier),
-        SetMemoryEPD(ct.epd + 1, SetTo, identifier),
+        SetMemoryEPD(ct.epd, SetTo, odds_1),
+        SetMemoryEPD(ct.epd + 1, SetTo, odds_2),
         ct.epd.AddNumber(2)
     ])
+
+
+def f_add_timer(key):
+    if key not in timers:
+        timers[key] = EUDVariable()
+        intervals[key] = EUDLightVariable()
 
 
 def f_reset(*args):
     key = str(args)
     reset_keys.add(key)
-    if key not in timers:
-        timers[key] = EUDVariable()
-        intervals[key] = EUDLightVariable()
+    f_add_timer(key)
     _timer, _interval = timers[key], intervals[key]
 
     _timer << 0
@@ -114,18 +115,21 @@ def f_display():
 
 
 @EUDFunc
-def f_setTxtPtr(line, identifier1, identifier2):
+def f_setTxtPtr(line):
     prev = f_dwread_cp(0)
     dst = ct.f_chatepd(prev)
     f_start_to_ct()
     if EUDIf()(prev % 2 == 0):
-        if EUDIf()(MemoryEPD(dst, Exactly, identifier1)):
+        if EUDIf()(EUDSCAnd()
+                           (MemoryEPD(dst, Exactly, odds_1))
+                           (MemoryEPD(dst, Exactly, odds_2))()
+        ):
             f_dwwrite_epd(dst, 0)
         EUDEndIf()
-    if EUDElseIf()(
-        EUDSCAnd()
-                (MemoryEPD(dst, AtMost, identifier2 + 0xFFFF))
-                (MemoryEPD(dst, AtLeast, identifier2))()
+    if EUDElseIf()(EUDSCAnd()
+                           (MemoryEPD(dst, AtMost, even_1 + 0xFFFF))
+                           (MemoryEPD(dst, AtLeast, even_1))
+                           (MemoryEPD(dst, Exactly, even_2))()
     ):
         f_dwwrite_epd(dst, 0)
     EUDEndIf()
@@ -144,19 +148,22 @@ def f_setToErrorLine():
 
 
 @EUDFunc
-def f_setPrevTxtPtr(identifier1, identifier2):
+def f_setPrevTxtPtr():
     prev = f_dwread_cp(0)
     dst = ct.f_chatepd(prev)
     f_start_to_ct()
     if EUDIf()(prev % 2 == 0):
-        if EUDIf()(MemoryEPD(dst, Exactly, identifier1)):
+        if EUDIf()(EUDSCAnd()
+                           (MemoryEPD(dst, Exactly, odds_1))
+                           (MemoryEPD(dst, Exactly, odds_2))()
+        ):
             DoActions(SetMemory(0x640B58, SetTo, prev))
             EUDReturn()
         EUDEndIf()
-    if EUDElseIf()(
-        EUDSCAnd()
-                (MemoryEPD(dst, AtMost, identifier2 + 0xFFFF))
-                (MemoryEPD(dst, AtLeast, identifier2))()
+    if EUDElseIf()(EUDSCAnd()
+                           (MemoryEPD(dst, AtMost, even_1 + 0xFFFF))
+                           (MemoryEPD(dst, AtLeast, even_1))
+                           (MemoryEPD(dst, Exactly, even_2))()
     ):
         DoActions(SetMemory(0x640B58, SetTo, prev))
         EUDReturn()
@@ -165,12 +172,29 @@ def f_setPrevTxtPtr(identifier1, identifier2):
     restore_txtPtr << 0
 
 
+def f_write_ct_str(*args):
+    ct_args = f_process_args_for_ct(*args)
+    ct_key = str(ct_args)
+    if ct_key not in cts:
+
+        @EUDFunc
+        def _write_ct_str():
+            ct.f_addText_epd(*ct_args)
+            EUDReturn(ct.epd - start)
+
+        cts[ct_key] = _write_ct_str
+    txtlen = cts[ct_key]()
+
+    return txtlen
+
+
 def f_effectBase(*args, line=0, autoreset=True, timer=None):
     f_update_txtPtr()
-    identifier = ct.b2i(next(identifier_gen))
-    i2 = identifier - (identifier % 0x10000)
-    display_text << 1
-    restore_txtPtr << 1
+    c0, c1, c2, c3, c4, c5 = next(identifier_gen)
+    w1, w2, w3 = [ct.b2i(u2b(x)) for x in (c0 + c1, c2 + c3, c4 + c5)]
+    SetVariables([odds_1, odds_2, even_1, even_2, display_text, restore_txtPtr],
+                 [w1 + w2 * 0x10000, w3 + 0x0D0D * 0x10000,
+                  w1 * 0x10000, w2 + w3 * 0x10000, 1, 1])
 
     if timer is None:
         key = str(args)
@@ -194,9 +218,7 @@ def f_effectBase(*args, line=0, autoreset=True, timer=None):
         alert_manual_reset.add(key)
 
     effect_keys.add(key)
-    if key not in timers:
-        timers[key] = EUDVariable()
-        intervals[key] = EUDLightVariable()
+    f_add_timer(key)
 
     prev = EUDVariable()
 
@@ -208,9 +230,9 @@ def f_effectBase(*args, line=0, autoreset=True, timer=None):
             ct.f_getoldcp()
             f_setcurpl(EPD(prev.getValueAddr()))
             if EUDIf()(line <= 10):
-                f_setTxtPtr(line, identifier, i2)
+                f_setTxtPtr(line)
             if EUDElse()():
-                f_setPrevTxtPtr(identifier, i2)
+                f_setPrevTxtPtr()
             EUDEndIf()
             ct.f_setoldcp()
         EUDEndIf()
@@ -220,30 +242,48 @@ def f_effectBase(*args, line=0, autoreset=True, timer=None):
         ct.f_getoldcp()
         f_setcurpl(EPD(prev.getValueAddr()))
         if line >= 0 and line <= 10:
-            f_setTxtPtr(line, identifier, i2)
+            f_setTxtPtr(line)
         else:
-            f_setPrevTxtPtr(identifier, i2)
+            f_setPrevTxtPtr()
         ct.f_setoldcp()
 
-    f_write_identifier(identifier)
-    ct_args = process_args_for_ct(*args)
-    ct_key = str(ct_args)
-    if ct_key not in cts:
-
-        @EUDFunc
-        def f_write_ct_str():
-            ct.f_addText_epd(*ct_args)
-            EUDReturn(ct.epd - start)
-
-        cts[ct_key] = f_write_ct_str
-    txtlen = cts[ct_key]()
+    f_write_identifier()
+    txtlen = f_write_ct_str(*args)
 
     return txtlen
 
 
-def f_fadein(*args, color=None, interval=1, line=0, autoreset=True, timer=None):
+l2r, r2l = dict(), dict()
 
-    txtlen = f_effectBase(*args, line=line, autoreset=autoreset, timer=timer)
+
+def f_l2r(color, _timer, txtlen):
+    if color not in l2r:
+
+        @EUDFunc
+        def _l2r(_timer, txtlen):
+            ret = EUDVariable()
+            if EUDIf()(_timer >= txtlen + len(color) - 2):
+                ret << 0
+            if EUDElse()():
+                ret << 1
+                for i, c in enumerate(color):
+                    if EUDIf()([_timer >= i, _timer <= txtlen + i - 1]):
+                        f_bwrite_epd(start + _timer - i, 3, c)
+                    EUDEndIf()
+            EUDEndIf()
+            EUDReturn(ret)
+
+        l2r[color] = _l2r
+    return l2r[color](_timer, txtlen)
+
+
+def f_fadein(*args, color=None, interval=1, line=0,
+             autoreset=True, timer=None, txtlen=None):
+    if txtlen is None:
+        txtlen = f_effectBase(*args, line=line, autoreset=autoreset, timer=timer)
+    elif txtlen is True:
+        txtlen = f_write_ct_str(*args)
+
     if color is None:
         color = (0x14, 0x05, 0x04, 0x03)
 
@@ -254,19 +294,11 @@ def f_fadein(*args, color=None, interval=1, line=0, autoreset=True, timer=None):
                 "object가 인자로 쓰이면 timer를 지정해야합니다; Must assign timer when arguments have object: {}".format(args))
     else:
         key = str((timer,))
+
+    f_add_timer(key)
     _timer, _interval = timers[key], intervals[key]
 
-    ret = EUDVariable()
-
-    if EUDIf()(_timer >= txtlen + len(color) - 2):
-        ret << 0
-    if EUDElse()():
-        ret << 1
-        for i, c in enumerate(color):
-            if EUDIf()([_timer >= i, _timer <= txtlen + i - 1]):
-                f_bwrite_epd(start + _timer - i, 3, c)
-            EUDEndIf()
-    EUDEndIf()
+    ret = f_l2r(color, _timer, txtlen)
 
     _interval += 1
     RawTrigger(
@@ -285,9 +317,38 @@ def f_fadein(*args, color=None, interval=1, line=0, autoreset=True, timer=None):
     return ret
 
 
-def f_fadeout(*args, color=None, interval=1, line=0, autoreset=True, timer=None):
+def f_r2l(color, _timer, txtlen):
+    if color not in r2l:
 
-    txtlen = f_effectBase(*args, line=line, autoreset=autoreset, timer=timer)
+        @EUDFunc
+        def _r2l(_timer, txtlen):
+            ret = EUDVariable()
+            if EUDIf()(_timer >= txtlen + len(color) - 2):
+                ret << 0
+            if EUDElse()():
+                ret << 1
+            EUDEndIf()
+
+            if EUDIf()(_timer >= 1):
+                s = txtlen + len(color) - 2 - _timer
+                for i, c in enumerate(color):
+                    if EUDIf()([s >= i, s <= txtlen + i - 1]):
+                        f_bwrite_epd(start + s - i, 3, c)
+                    EUDEndIf()
+            EUDEndIf()
+            EUDReturn(ret)
+
+        r2l[color] = _r2l
+    return r2l[color](_timer, txtlen)
+
+
+def f_fadeout(*args, color=None, interval=1, line=0,
+              autoreset=True, timer=None, txtlen=None):
+    if txtlen is None:
+        txtlen = f_effectBase(*args, line=line, autoreset=autoreset, timer=timer)
+    elif txtlen is True:
+        txtlen = f_write_ct_str(*args)
+
     if color is None:
         color = (0x14, 0x05, 0x04, 0x03)
 
@@ -298,23 +359,11 @@ def f_fadeout(*args, color=None, interval=1, line=0, autoreset=True, timer=None)
                 "object가 인자로 쓰이면 timer를 지정해야합니다; Must assign timer when arguments have object: {}".format(args))
     else:
         key = str((timer,))
+
+    f_add_timer(key)
     _timer, _interval = timers[key], intervals[key]
 
-    ret = EUDVariable()
-
-    if EUDIf()(_timer >= txtlen + len(color) - 2):
-        ret << 0
-    if EUDElse()():
-        ret << 1
-    EUDEndIf()
-
-    if EUDIf()(_timer >= 1):
-        s = txtlen + len(color) - 2 - _timer
-        for i, c in enumerate(color):
-            if EUDIf()([s >= i, s <= txtlen + i - 1]):
-                f_bwrite_epd(start + s - i, 3, c)
-            EUDEndIf()
-    EUDEndIf()
+    ret = f_r2l(color, _timer, txtlen)
 
     _interval += 1
     RawTrigger(
@@ -343,4 +392,4 @@ def _warning():
                 "수동 reset 필요; need manual reset for timer: {}".format(key))
 
 
-atexit.register(_warning)
+EUDOnStart(_warning)

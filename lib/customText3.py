@@ -5,8 +5,9 @@ import math
 """
 customText 0.2.0
 
-0.2.0 Add Legacy Support: chatAnnouncement + old function names
+0.2.0 Add Legacy Support: chatAnnouncement + old function names.
     Add f_chatprintAll/_epd. Change f_chatprint: print for CurrentPlayer.
+    Add f_get(EUDVariable): retrieve current position.
 0.1.3 f_add1c_epd makes malaligned string when it doesn't have a color code
 0.1.2 fix EUD error when modify stat_txt.tbl
 0.1.1 fix bug; ct.epd/ptr set to 0 in SC 1.16
@@ -144,6 +145,11 @@ class f_1c:  # _epd함수에서 1글자씩 쓰기
         self._value = value
 
 
+class f_get:  # ptr/epd 중간 저장
+    def __init__(self, value):
+        self._value = value
+
+
 def b2i(x):
     return int.from_bytes(x, byteorder='little')
 
@@ -158,6 +164,8 @@ def f_cp949_print(dst, *args):
             dst = f_dbstr_addstr(dst, arg._value)
         elif isUnproxyInstance(arg, f_color):
             dst = f_dbstr_addstr(dst, Color[arg._value])
+        elif isUnproxyInstance(arg, f_get):
+            SetVariables(arg._value, dst)
         else:
             dst = f_dbstr_print(dst, arg)
 
@@ -479,6 +487,8 @@ def f_cp949_print_epd(dstp, *args):
             dstp = f_addstr_epd(dstp, Color[arg._value])
         elif isUnproxyInstance(arg, f_1c):
             dstp = f_add1c_epd(dstp, arg._value, encoding="cp949")
+        elif isUnproxyInstance(arg, f_get):
+            SetVariables(arg._value, dstp)
         elif isUnproxyInstance(arg, bytes):
             dstp = f_addbyte_epd(dstp, arg)
         elif isUnproxyInstance(arg, str):

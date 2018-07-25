@@ -1,5 +1,5 @@
 # advanced read/write
-from eudplib.eudlib.memiof.bwepdio import (
+from eudplib.eudlib.memiof import (
     dwepdio as dwm,
     cpmemio as cpm,
     # byterw as brw,
@@ -106,7 +106,7 @@ def f_dwepdCUnitread_epd(targetplayer):
     fin, restore = [c.Forward() for i in range(2)]
     cs.DoActions([
         ptr.SetNumber(0x59CCA8),
-        epd.SetNumber(c.EPD(0x59CCA8)),
+        epd.SetNumber(ut.EPD(0x59CCA8)),
         c.SetMemory(0x6509B0, c.SetTo, targetplayer),
         c.SetMemory(restore + 20, c.SetTo, 0),
     ])
