@@ -3,9 +3,11 @@ from eudplib.eudlib.stringf.rwcommon import br1, bw1
 import eudplib.eudlib.stringf.cputf8 as cputf
 import math
 """
-customText 0.1.3
+customText 0.2.0
 
-0.1.3 fix f_add1c_epd makes malaligned string when 1 byte chars are used with no color code
+0.2.0 Add Legacy Support: chatAnnouncement + old function names
+    Add f_chatprintAll/_epd. Change f_chatprint: print for CurrentPlayer.
+0.1.3 f_add1c_epd makes malaligned string when it doesn't have a color code
 0.1.2 fix EUD error when modify stat_txt.tbl
 0.1.1 fix bug; ct.epd/ptr set to 0 in SC 1.16
 0.1.0 initial release
@@ -328,18 +330,25 @@ def f_addChat(*args):
 
 
 def f_chatprint(line, *args):
-    chatptr << f_sprintf(f_chatdst(line), *args)
+    if isinstance(line, int) and line == 12:
+        f_printError(EncodePlayer(CurrentPlayer))
+    if EUDIf()(Memory(0x57F1B0, Exactly, f_getcurpl())):
+        chatptr << f_sprintf(f_chatdst(line), *args)
+    EUDEndIf()
 
 
 def f_chatprintP(player, line, *args):
     if isinstance(line, int) and line == 12:
         f_printError(player)
-    if isinstance(player, int) and player >= 8:
-        f_chatprint(line, *args)
-    else:
-        if EUDIf()(Memory(0x57F1B0, Exactly, player)):
-            f_chatprint(line, *args)
-        EUDEndIf()
+    if EUDIf()(Memory(0x57F1B0, Exactly, player)):
+        chatptr << f_sprintf(f_chatdst(line), *args)
+    EUDEndIf()
+
+
+def f_chatprintAll(line, *args):
+    if isinstance(line, int) and line == 12:
+        f_printError(EncodePlayer(AllPlayers))
+    chatptr << f_sprintf(f_chatdst(line), *args)
 
 
 @EUDFunc
@@ -552,18 +561,25 @@ def f_addChat_epd(*args):
 
 
 def f_chatprint_epd(line, *args):
-    chatepd << f_sprintf_epd(f_chatepd(line), *args)
+    if isinstance(line, int) and line == 12:
+        f_printError(EncodePlayer(CurrentPlayer))
+    if EUDIf()(Memory(0x57F1B0, Exactly, f_getcurpl())):
+        chatepd << f_sprintf_epd(f_chatepd(line), *args)
+    EUDEndIf()
 
 
 def f_chatprintP_epd(player, line, *args):
-    if line == 12:
+    if isinstance(line, int) and line == 12:
         f_printError(player)
-    if isinstance(player, int) and player >= 8:
-        f_chatprint_epd(line, *args)
-    else:
-        if EUDIf()(Memory(0x57F1B0, Exactly, player)):
-            f_chatprint_epd(line, *args)
-        EUDEndIf()
+    if EUDIf()(Memory(0x57F1B0, Exactly, player)):
+        chatepd << f_sprintf_epd(f_chatepd(line), *args)
+    EUDEndIf()
+
+
+def f_chatprintAll_epd(line, *args):
+    if isinstance(line, int) and line == 12:
+        f_printError(EncodePlayer(AllPlayers))
+    chatepd << f_sprintf_epd(f_chatepd(line), *args)
 
 
 @EUDFunc
@@ -685,3 +701,19 @@ if lenSTR2 < 218:
     print('''*경고* 현재 1번 스트링 길이: {}
 다른 스트링 덮어쓰기를 방지하려면
 맵 소개를 218자 이상으로 두는걸 권장합니다.'''.format(lenSTR2))
+
+# legacy
+colorArray = Color
+f_getTblPtr = f_tblptr
+f_ct_print = f_utf8_print
+f_ct_print_epd = f_utf8_print_epd
+f_cprint = f_sprintf
+f_cprint_epd = f_sprintf_epd
+
+
+def f_chatAnnouncement(*args):
+    f_chatprint(12, *args)
+    
+
+def f_chatAnnouncement_epd(*args):
+    f_chatprint_epd(12, *args)
