@@ -3,8 +3,9 @@ from eudplib.eudlib.stringf.rwcommon import br1, bw1
 import eudplib.eudlib.stringf.cputf8 as cputf
 import math
 """
-customText 0.2.0
+customText 0.2.1
 
+0.2.1 f_playSoundP, f_playSoundAll work properly.
 0.2.0 Add Legacy Support: chatAnnouncement + old function names.
     Add f_chatprintAll/_epd. Change f_chatprint: print for CurrentPlayer.
     Add f_get(EUDVariable): retrieve current position.
@@ -259,17 +260,15 @@ def f_playSound(*args):
 
 def f_playSoundP(player, *args):
     f_getoldcp()
-    DoActions([
-        SetMemory(0x6509B0, SetTo, player),
-        PlayWAV(strBuffer)
-    ])
+    DoActions(SetMemory(0x6509B0, SetTo, player))
+    f_playSound(*args)
     f_setoldcp()
 
 
 def f_playSoundAll(*args):
     f_getoldcp()
     f_setlocalcp()
-    DoActions(PlayWAV(strBuffer))
+    f_playSound(*args)
     f_setoldcp()
 
 
