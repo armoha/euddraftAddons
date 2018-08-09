@@ -30,3 +30,8 @@ from cunitcpi import (
     f_dwcunitread_cp,
     f_epdcunitread_cp
 )
+from cunit import (
+    CUnit,
+    CSprite,
+    CImage
+)
