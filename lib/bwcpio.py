@@ -43,13 +43,13 @@ def f_bwrite_cp(cpo, subp, b):
             if j == 8 * i:
                 break
 
-        cs.DoActions([
-            cpaddact << c.SetDeaths(c.CurrentPlayer, c.Add, 0xEDAC, 0),
-            c.SetDeaths(c.CurrentPlayer, c.Add, b * (256 ** i), 0),
-        ])
+        cs.DoActions(c.SetDeaths(c.CurrentPlayer, c.Add, b * (256 ** i), 0))
         cs.EUDBreak()
     cs.EUDEndSwitch()
-    cs.DoActions(c.SetMemory(0x6509B0, c.Add, -cpo))
+    cs.DoActions([
+        cpaddact << c.SetDeaths(c.CurrentPlayer, c.Add, 0xEDAC, 0),
+        c.SetMemory(0x6509B0, c.Add, -cpo),
+    ])
 
 
 @c.EUDFunc
@@ -84,10 +84,7 @@ def f_wwrite_cp(cpo, subp, w):
             if j == 8 * i:
                 break
 
-        cs.DoActions([
-            cpaddact << c.SetDeaths(c.CurrentPlayer, c.Add, 0xEDAC, 0),
-            c.SetDeaths(c.CurrentPlayer, c.Add, w * (256 ** i), 0),
-        ])
+        cs.DoActions(c.SetDeaths(c.CurrentPlayer, c.Add, w * (256 ** i), 0))
         cs.EUDBreak()
 
     if cs.EUDSwitchCase()(3):
@@ -96,7 +93,10 @@ def f_wwrite_cp(cpo, subp, w):
         f_bwrite_cp(1, 0, b1)
 
     cs.EUDEndSwitch()
-    cs.DoActions(c.SetMemory(0x6509B0, c.Add, -cpo))
+    cs.DoActions([
+        cpaddact << c.SetDeaths(c.CurrentPlayer, c.Add, 0xEDAC, 0),
+        c.SetMemory(0x6509B0, c.Add, -cpo)
+    ])
 
 
 @c.EUDFunc
@@ -135,9 +135,9 @@ def f_bread_cp(cpo, subp):
             if j == 8 * i:
                 break
 
-        cs.DoActions([cpaddact << c.SetDeaths(c.CurrentPlayer, c.Add, 0xEDAC, 0)])
         cs.EUDBreak()
     cs.EUDEndSwitch()
+    cs.DoActions([cpaddact << c.SetDeaths(c.CurrentPlayer, c.Add, 0xEDAC, 0)])
     cs.DoActions(c.SetMemory(0x6509B0, c.Add, -cpo))
     return b
 
@@ -178,12 +178,14 @@ def f_wread_cp(cpo, subp):
             if j == 8 * i:
                 break
 
-        cs.DoActions([cpaddact << c.SetDeaths(c.CurrentPlayer, c.Add, 0xEDAC, 0)])
         cs.EUDBreak()
 
     if cs.EUDSwitchCase()(3):
         w << f_bread_cp(0, 3) + f_bread_cp(1, 0) * 256
 
     cs.EUDEndSwitch()
-    cs.DoActions(c.SetMemory(0x6509B0, c.Add, -cpo))
+    cs.DoActions([
+        cpaddact << c.SetDeaths(c.CurrentPlayer, c.Add, 0xEDAC, 0),
+        c.SetMemory(0x6509B0, c.Add, -cpo)
+    ])
     return w
