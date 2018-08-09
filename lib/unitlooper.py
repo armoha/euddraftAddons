@@ -2,48 +2,92 @@ from eudplib import *
 
 
 @EUDFunc
-def f_dwepdCUnitread_epd(targetplayer):
-    origcp = f_getcurpl()
-    ptr, epd = EUDVariable(), EUDVariable()
-    fin, restore = [Forward() for i in range(2)]
-    DoActions([
-        ptr.SetNumber(0x59CCA8),
-        epd.SetNumber(EPD(0x59CCA8)),
-        SetMemory(0x6509B0, SetTo, targetplayer),
-        SetMemory(restore + 20, SetTo, 0),
-    ])
+def f_dwepdcunitread_epd_safe(targetplayer):
+    # from advanced read/write functions
+    # https://github.com/armoha/euddraftAddons/raw/master/lib/advrw.zip
 
-    for i in range(10, -1, -1):
-        RawTrigger(
-            conditions=[
-                Deaths(CurrentPlayer, AtLeast, 0x59CCA8 + 336 * 2**i, 0)
-            ],
-            actions=[
-                SetDeaths(CurrentPlayer, Subtract, 336 * 2**i, 0),
-                ptr.AddNumber(336 * 2 ** i),
-                epd.AddNumber(84 * 2 ** i),
-                SetMemory(restore + 20, Add, 336 * 2**i)
-            ]
-        )
-    EUDJumpIf(Deaths(CurrentPlayer, Exactly, 0x59CCA8, 0), fin)
-    RawTrigger(
+    ret, retepd = EUDVariable(), EUDVariable()
+
+    # Common comparison rawtrigger
+    PushTriggerScope()
+    cmpc = Forward()
+    cmp_player = cmpc + 4
+    cmp_number = cmpc + 8
+    cmpact = Forward()
+
+    cmptrigger = Forward()
+    cmptrigger << RawTrigger(
+        conditions=[
+            cmpc << Memory(0, AtMost, 0)
+        ],
         actions=[
-            ptr.SetNumber(0),
-            epd.SetNumber(0),
+            cmpact << SetMemory(cmptrigger + 4, SetTo, 0)
         ]
     )
-    fin << RawTrigger(actions=[
-        restore << SetDeaths(CurrentPlayer, Add, 0xEDAC, 0)
-    ])
-    f_setcurpl(origcp)
+    cmpact_ontrueaddr = cmpact + 20
+    PopTriggerScope()
 
-    EUDReturn(ptr, epd)
+    # static_for
+    chain1 = [Forward() for _ in range(11)]
+    chain2 = [Forward() for _ in range(11)]
+
+    # Main logic start
+    error = 1
+    SeqCompute([
+        (EPD(cmp_player), SetTo, targetplayer),
+        (EPD(cmp_number), SetTo, 0x59CCA8 + 336 * (0x7FF - error)),
+        (ret, SetTo, 0x59CCA8 + 336 * (0x7FF - error)),
+        (retepd, SetTo, EPD(0x59CCA8) + 84 * (0x7FF - error))
+    ])
+
+    readend = Forward()
+
+    for i in range(10, -1, -1):
+        nextchain = chain1[i - 1] if i > 0 else readend
+        epdsubact = [retepd.AddNumber(-84 * 2 ** i)]
+        epdaddact = [retepd.AddNumber(84 * 2 ** i)]
+
+        chain1[i] << RawTrigger(
+            nextptr=cmptrigger,
+            actions=[
+                SetMemory(cmp_number, Subtract, 336 * 2 ** i),
+                SetNextPtr(cmptrigger, chain2[i]),
+                SetMemory(cmpact_ontrueaddr, SetTo, nextchain),
+                ret.SubtractNumber(336 * 2 ** i),
+            ] + epdsubact
+        )
+
+        chain2[i] << RawTrigger(
+            actions=[
+                SetMemory(cmp_number, Add, 336 * 2 ** i),
+                ret.AddNumber(336 * 2 ** i),
+            ] + epdaddact
+        )
+
+    readend << NextTrigger()
+
+    RawTrigger(
+        conditions=ret.AtMost(0x59CCA7),
+        actions=[
+            ret.SetNumber(0),
+            retepd.SetNumber(0),
+        ]
+    )
+    RawTrigger(
+        conditions=ret.AtLeast(0x628299),
+        actions=[
+            ret.SetNumber(0),
+            retepd.SetNumber(0),
+        ]
+    )
+
+    return ret, retepd
 
 
 def LoopNewUnit():
     firstUnitPtr = 0x628430
     EUDCreateBlock('newunitloop', firstUnitPtr)
-    ptr, epd = f_dwepdCUnitread_epd(EPD(firstUnitPtr))
+    ptr, epd = f_dwepdcunitread_epd_safe(EPD(firstUnitPtr))
     tos0 = EUDLightVariable()
     tos0 << 0
 
@@ -57,7 +101,7 @@ def LoopNewUnit():
             EUDBreakIf(tos0.AtLeast(2))
         EUDEndIf()
         EUDSetContinuePoint()
-        SetVariables([ptr, epd], f_dwepdCUnitread_epd(epd + 1))
+        SetVariables([ptr, epd], f_dwepdcunitread_epd_safe(epd + 1))
     EUDEndWhile()
 
     EUDPopBlock('newunitloop')
@@ -103,13 +147,13 @@ def CPLoopUnit():
 def LoopPUnit(player_number):
     firstPlayerUnitPtr = 0x6283F8 + 4 * player_number
     EUDCreateBlock('playerunitloop', firstPlayerUnitPtr)
-    ptr, epd = f_dwepdCUnitread_epd(EPD(firstPlayerUnitPtr))
+    ptr, epd = f_dwepdcunitread_epd_safe(EPD(firstPlayerUnitPtr))
 
     if EUDWhile()(ptr >= 1):
         yield ptr, epd
         EUDSetContinuePoint()
         # /*0x06C*/ BW::CUnit*  nextPlayerUnit;
-        SetVariables([ptr, epd], f_dwepdCUnitread_epd(epd + 0x6C // 4))
+        SetVariables([ptr, epd], f_dwepdcunitread_epd_safe(epd + 0x6C // 4))
     EUDEndWhile()
 
     EUDPopBlock('playerunitloop')
