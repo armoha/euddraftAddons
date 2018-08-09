@@ -1,15 +1,3 @@
-# advanced read/write
-from bwcpio import (
-    f_bwrite_cp,
-    f_wwrite_cp,
-    f_bread_cp,
-    f_wread_cp
-)
-from safecpmemio import (
-    f_dwepdread_cp_safe,
-    f_dwread_cp_safe,
-    f_epdread_cp_safe
-)
 from safecuniti import (
     f_dwepdcunitread_epd_safe,
     f_dwcunitread_epd_safe,
@@ -30,3 +18,18 @@ from cunitcpi import (
     f_dwcunitread_cp,
     f_epdcunitread_cp
 )
+
+
+def CUnit(i):
+	if i == 0:
+		return 0x59CCA8
+	else:
+		return 0x628298 - 0x150 * (i-1)
+
+
+def CImage(i):
+	return 0x57D728 - 0x40 * i
+
+
+def CSprite(i):
+	return 0x63FD04 - 0x24 * i
