@@ -145,6 +145,10 @@ def CPLoopUnit():
 
 
 def LoopPUnit(player_number):
+    if player_number == CurrentPlayer or player_number == EncodePlayer(CurrentPlayer):
+        player_number = f_getcurpl()
+    if isUnproxyInstance(player_number, type(P1)):
+        player_number = EncodePlayer(player_number)
     firstPlayerUnitPtr = 0x6283F8 + 4 * player_number
     EUDCreateBlock('playerunitloop', firstPlayerUnitPtr)
     ptr, epd = f_dwepdcunitread_epd_safe(EPD(firstPlayerUnitPtr))
