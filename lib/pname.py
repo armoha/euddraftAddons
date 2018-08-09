@@ -47,7 +47,9 @@ EUDOnStart(_init)
 
 
 def SetName(player, *name):
-    if not isUnproxyInstance(player, int):
+    if player == CurrentPlayer:
+        player = f_getcurpl()
+    if isUnproxyInstance(player, type(P1)):
         player = EncodePlayer(player)
     temp = Db(218)
     bname, blen = 0x57EEEB + 36 * player, baselen[player]
