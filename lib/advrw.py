@@ -5,6 +5,19 @@ from bwcpio import (
     f_bread_cp,
     f_wread_cp
 )
+from dwmemio2 import (
+    f_bread2_epd,
+    f_wread2_epd,
+    f_bread2_cp,
+    f_wread2_cp
+)
+from perf import (
+    f_dwepdread_epd,
+    f_dwread_epd,
+    f_epdread_epd,
+    f_wread_epd,
+    f_bread_epd
+)
 from safecpmemio import (
     f_dwepdread_cp_safe,
     f_dwread_cp_safe,
