@@ -107,7 +107,7 @@ def LoopNewUnit():
     EUDPopBlock('newunitloop')
 
 
-cpoffset = EUDVariable()
+cpStack, prevcp = [], 0x0C
 initcp = Forward()
 
 
@@ -117,25 +117,48 @@ def f_setcp(targetplayer):
         initcp << SetMemory(0x6509B0, Subtract, 0xEDAC),
         SetMemory(0x6509B0, Add, targetplayer),
         SetMemory(initcp + 20, SetTo, targetplayer),
-        cpoffset.SetNumber(targetplayer)
     ])
 
 
 def f_cp(offset):
-    f_setcp(offset // 4)
+    global prevcp
+    if prevcp != offset:
+        f_setcp(offset // 4)
+        prevcp = offset
+
+
+def f_cpScope(offset):
+    a, b = cpStack[-1], offset
+    cpStack.append(b)
+    f_cpMove(a, b)
+    yield b // 4
+    f_cpMove(b, a)
+    cpStack.pop()
+
+
+def _addorsub(d):
+    if d >= 0:
+        return Add
+    else:
+        return Subtract
+
+
+def f_cpMove(a, b):
+    d = abs(b // 4 - a // 4)
+    DoActions(SetMemory(0x6509B0, _addorsub(b - a), d))
+    # print("0x{:X} to 0x{:X}: {._name}, {}.".format(a, b, _addorsub(b - a), d))
 
 
 def CPLoopUnit():
     initialEPD = EPD(0x59CCA8) + 0x0C // 4
     oldcp = f_getcurpl()
-    DoActions([
-        SetMemory(0x6509B0, SetTo, initialEPD),
-        SetMemory(initcp + 20, SetTo, 0x0C // 4),
-        cpoffset.SetNumber(0x0C // 4),
-    ])
+    DoActions([SetMemory(0x6509B0, SetTo, initialEPD),
+               SetMemory(initcp + 20, SetTo, 0x0C // 4)])
+    global cpStack, prevcp
+    cpStack, prevcp = [0x0C], 0x0C
     if EUDLoopN()(1700):
         if EUDIf()(Deaths(CurrentPlayer, AtLeast, 1, 0)):
-            yield cpoffset
+            yield cpStack
             f_cp(0x0C)
         EUDEndIf()
         DoActions(SetMemory(0x6509B0, Add, 336 // 4))
@@ -182,3 +205,12 @@ def EUDLoopUnit2():
         ptr += 336
         epd += 336 // 4
     EUDEndLoopN()
+
+
+def _init():
+    if EUDIf()(Never()):
+        f_setcp(0x0C)
+    EUDEndIf()
+
+
+EUDOnStart(_init)
