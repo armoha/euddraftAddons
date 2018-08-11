@@ -157,10 +157,10 @@ def CPLoopUnit():
     global cpStack, prevcp
     cpStack, prevcp = [0x0C], 0x0C
     if EUDLoopN()(1700):
-        if EUDIf()(Deaths(CurrentPlayer, AtLeast, 1, 0)):
-            yield cpStack
-            f_cp(0x0C)
-        EUDEndIf()
+        EUDContinueIf(Deaths(CurrentPlayer, Exactly, 0, 0))
+        yield cpStack
+        f_cp(0x0C)
+        EUDSetContinuePoint()
         DoActions(SetMemory(0x6509B0, Add, 336 // 4))
     EUDEndLoopN()
 
