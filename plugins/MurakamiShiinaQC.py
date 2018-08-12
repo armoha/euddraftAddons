@@ -235,15 +235,22 @@ def onInit():
 
         # default settings
         if key == 'QCUnitID':
-            QCUnitID = int(EncodeUnit(value.strip()))
+            try:
+                QCUnitID = int(EncodeUnit(value.strip()))
+            except EPError:
+                QCUnitID = int(EncodeUnit(int(value.strip())))
             continue
         elif key == 'QC_XY':
             init_x, init_y = int(V[0]), int(V[1])
             continue
         elif key == 'QCPlayer':
-            QCPlayer = int(EncodePlayer(value.strip()))
+            try:
+                QCPlayer = int(EncodePlayer(value.strip()))
+            except EPError:
+                QCPlayer = int(EncodePlayer(int(value.strip())))
             continue
 
+        ConCount = 0
         if key == '마우스' or key.lower() == 'mouse':
             if len(V) >= len(humans):
                 print('MouseMovelocation enabled: ',
@@ -259,7 +266,8 @@ def onInit():
             for condition_ in conditions_:
                 if condition_.upper() in KeyCodeDict:  # 키인식
                     VirtualKeyValue = KeyCodeDict[condition_.upper()]
-                    Con += 'VK[{}] == 1,'.format(VirtualKeyValue)
+                    Con += '(VK[{}] == 1)'.format(VirtualKeyValue)
+                    ConCount += 1
                     global VK, VK_USE, VK_EPD
                     VK[VirtualKeyValue] = EUDVariable()
                     VK_USE[VirtualKeyValue] = 1
@@ -279,21 +287,31 @@ def onInit():
                                        r'f_dwread_epd(EPD(\1))', Point)
                     elif re.match(r'0[xX][0-9a-fA-F]+', C[0]):
                         try:
-                            Con += 'Memory(%s, %s, %s),' % (C[0], C[1], C[2])
+                            Con += '(Memory(%s, %s, %s))' % (C[0], C[1], C[2])
                         except IndexError:
-                            Con += 'f_dwread_epd(EPD(%s))&%s==%s,' % (
+                            Con += '(f_dwread_epd(EPD(%s))&%s==%s)' % (
                                 C[0], C[1], C[1])
+                        ConCount += 1
                     else:
-                        Con += condition_ + ','
+                        Con += '({})'.format(condition_)
+                        ConCount += 1
+
+        if Con == '':
+            Con = 'Always()'
+        elif ConCount >= 2:
+            Con = 'EUDSCAnd()' + Con + '()'
+
         if Point != '':
-            if Con == '':
-                Con = 'Always(),'
             if Point[:5] == 'val: ':
+                try:
+                    UNIT = int(EncodeUnit(V[0]))
+                except EPError:
+                    UNIT = int(EncodeUnit(int(V[0])))
                 Ret = '''PosX, PosY = f_dwbreak(PosXY)[0:2]
 DoActions([
     SetDeaths(player, Add, PosX, {0}), SetDeaths(player, Add, PosY * 1000, {0})
-])'''.format(EncodeUnit(V[0]))
-                DeathUnits.extend([int(EncodeUnit(V[0]))])
+])'''.format(UNIT)
+                DeathUnits.extend([UNIT])
                 Point = Point[5:]
             elif len(V) >= len(humans):  # return locations
                 V_L = []
@@ -306,19 +324,35 @@ DoActions([
                 Ret = '''PosX, PosY = f_dwbreak(PosXY)[0:2]
 SetLocation(VTrgLoc[i][p], PosX, PosY)'''
             elif len(V) == 1:  # return death
-                Ret = 'DoActions(SetDeaths(player, Add, PosXY, %s))' % (EncodeUnit(V[0]))
-                DeathUnits.extend([int(EncodeUnit(V[0]))])
+                try:
+                    UNIT = int(EncodeUnit(V[0]))
+                except EPError:
+                    UNIT = int(EncodeUnit(int(V[0])))
+                Ret = 'DoActions(SetDeaths(player, Add, PosXY, {}))'.format(UNIT)
+                DeathUnits.extend([UNIT])
             else:  # return deaths
+                try:
+                    UNIT0 = int(EncodeUnit(V[0]))
+                except EPError:
+                    UNIT0 = int(EncodeUnit(int(V[0])))
+                try:
+                    UNIT1 = int(EncodeUnit(V[1]))
+                except EPError:
+                    UNIT1 = int(EncodeUnit(int(V[1])))
                 Ret = '''PosX, PosY = f_dwbreak(PosXY)[0:2]
 DoActions([
     SetDeaths(player, Add, PosX, {}), SetDeaths(player, Add, PosY, {})
-])'''.format(*[EncodeUnit(V[_]) for _ in range(2)])
-                DeathUnits.extend([int(EncodeUnit(V[_])) for _ in range(2)])
+])'''.format(UNIT0, UNIT1)
+                DeathUnits.extend([UNIT0, UNIT1])
             VTrg.append((Point, Con, Ret))
             VTrgLoc.append(V)
         else:
-            Ret = 'SetDeaths(player, Add, %s, %s)' % (V[1], EncodeUnit(V[0]))
-            DeathUnits.extend([int(EncodeUnit(V[0]))])
+            try:
+                UNIT = int(EncodeUnit(V[0]))
+            except EPError:
+                UNIT = int(EncodeUnit(int(V[0])))
+            Ret = 'SetDeaths(player, Add, %s, %s)' % (V[1], UNIT)
+            DeathUnits.extend([UNIT])
             Trg.append((Con, Ret))
     global QCNum
     QCNum = len(VTrg) + ceil(len(Trg) / (mapX + mapY))
