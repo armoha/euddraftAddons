@@ -3,23 +3,142 @@ from struct import unpack
 from math import ceil
 import re
 
-cmpScreenX, cmpMouseX, cmpScreenY, cmpMouseY = [Forward() for i in range(4)]
+
+@EUDFunc
+def SetLocation(locid, x, y):
+    DoActions([
+        SetMemoryEPD(EPD(0x58DC60) + locid * 5 + 0, SetTo, x),
+        SetMemoryEPD(EPD(0x58DC60) + locid * 5 + 1, SetTo, y),
+        SetMemoryEPD(EPD(0x58DC60) + locid * 5 + 2, SetTo, x),
+        SetMemoryEPD(EPD(0x58DC60) + locid * 5 + 3, SetTo, y),
+    ])
 
 
 @EUDFunc
-def f_compareMouse():
-    if EUDIf()(
-        EUDSCAnd()
-        (cmpScreenX << Memory(0x62848C, Exactly, 0))
-        (cmpMouseX << Memory(0x6CDDC4, Exactly, 0))
-        (cmpScreenY << Memory(0x6284A8, Exactly, 0))
-        (cmpMouseY << Memory(0x6CDDC8, Exactly, 0))
-        ()
-    ):
-        EUDReturn(0)
-    if EUDElse()():
-        EUDReturn(1)
-    EUDEndIf()
+def _cunitreader():
+    ptr, epd = EUDVariable(), EUDVariable()
+    addact = Forward()
+    addact_number = addact + 20
+    DoActions([
+        ptr.SetNumber(0x59CCA8),
+        epd.SetNumber(EPD(0x59CCA8)),
+        SetMemory(addact_number, SetTo, 0),
+    ])
+    for i in range(10, -1, -1):
+        RawTrigger(
+            conditions=[
+                Deaths(CurrentPlayer, AtLeast, 0x59CCA8 + 336 * 2**i, 0)
+            ],
+            actions=[
+                SetDeaths(CurrentPlayer, Subtract, 336 * 2**i, 0),
+                ptr.AddNumber(336 * 2**i),
+                epd.AddNumber(84 * 2**i),
+                SetMemory(addact_number, Add, 336 * 2**i),
+            ]
+        )
+    RawTrigger(actions=[addact << SetDeaths(CurrentPlayer, Add, 0xEDAC, 0)])
+
+    return ptr, epd
+
+
+def f_dwepdcunitread_cp(cpo):
+    if not isinstance(cpo, int) or cpo != 0:
+        DoActions(SetMemory(0x6509B0, Add, cpo))
+    ptr, epd = _cunitreader()
+    if not isinstance(cpo, int) or cpo != 0:
+        DoActions(SetMemory(0x6509B0, Add, -cpo))
+    return ptr, epd
+
+
+@EUDFunc
+def _cunitcpreader():
+    ret, retepd = EUDVariable(), EUDVariable()
+
+    # Common comparison rawtrigger
+    PushTriggerScope()
+    cmpc = Forward()
+    cmp_number = cmpc + 8
+    cmpact = Forward()
+
+    cmptrigger = Forward()
+    cmptrigger << RawTrigger(
+        conditions=[
+            cmpc << Deaths(CurrentPlayer, AtMost, 0, 0)
+        ],
+        actions=[
+            cmpact << SetMemory(cmptrigger + 4, SetTo, 0)
+        ]
+    )
+    cmpact_ontrueaddr = cmpact + 20
+    PopTriggerScope()
+
+    # static_for
+    chain1 = [Forward() for _ in range(11)]
+    chain2 = [Forward() for _ in range(11)]
+
+    # Main logic start
+    error = 1
+    SeqCompute([
+        (EPD(cmp_number), SetTo, 0x59CCA8 + 336 * (0x7FF - error)),
+        (ret, SetTo, 0x59CCA8 + 336 * (0x7FF - error)),
+        (retepd, SetTo, EPD(0x59CCA8) + 84 * (0x7FF - error))
+    ])
+
+    readend = Forward()
+
+    for i in range(10, -1, -1):
+        nextchain = chain1[i - 1] if i > 0 else readend
+        epdsubact = [retepd.AddNumber(-84 * 2 ** i)]
+        epdaddact = [retepd.AddNumber(84 * 2 ** i)]
+
+        chain1[i] << RawTrigger(
+            nextptr=cmptrigger,
+            actions=[
+                SetMemory(cmp_number, Subtract, 336 * 2 ** i),
+                SetNextPtr(cmptrigger, chain2[i]),
+                SetMemory(cmpact_ontrueaddr, SetTo, nextchain),
+                ret.SubtractNumber(336 * 2 ** i),
+            ] + epdsubact
+        )
+
+        chain2[i] << RawTrigger(
+            actions=[
+                SetMemory(cmp_number, Add, 336 * 2 ** i),
+                ret.AddNumber(336 * 2 ** i),
+            ] + epdaddact
+        )
+
+    readend << NextTrigger()
+
+    RawTrigger(
+        conditions=ret.AtMost(0x59CCA7),
+        actions=[
+            ret.SetNumber(0),
+            retepd.SetNumber(0),
+        ]
+    )
+    RawTrigger(
+        conditions=ret.AtLeast(0x628299),
+        actions=[
+            ret.SetNumber(0),
+            retepd.SetNumber(0),
+        ]
+    )
+
+    return ret, retepd
+
+
+def f_dwepdcunitread_cp_safe(cpo):
+    if not isinstance(cpo, int) or cpo != 0:
+        DoActions(SetMemory(0x6509B0, Add, cpo))
+    ptr, epd = _cunitcpreader()
+    if not isinstance(cpo, int) or cpo != 0:
+        DoActions(SetMemory(0x6509B0, Add, -cpo))
+    return ptr, epd
+
+
+def f_dwcunitread_cp_safe(cpo):
+    return f_dwepdcunitread_cp_safe(cpo)[0]
 
 
 KeyCodeDict = {
@@ -76,6 +195,24 @@ KeyCodeDict = {
     'EXSEL': 0xF8, 'EREOF': 0xF9, 'PLAY': 0xFA, 'ZOOM': 0xFB, 'NONAME': 0xFC,
     'PA1': 0xFD, 'OEM_CLEAR': 0xFE, '_NONE_': 0xFF
 }
+cmpScreenX, cmpMouseX, cmpScreenY, cmpMouseY = [Forward() for i in range(4)]
+VK, VK_USE, VK_EPD = [None for _ in range(256)], [0 for _ in range(256)], [0 for _ in range(64)]
+
+
+@EUDFunc
+def MouseMoved():
+    ret = EUDVariable()
+    ret << 1
+    RawTrigger(
+        conditions=[
+            cmpScreenX << Memory(0x62848C, Exactly, 0),
+            cmpMouseX << Memory(0x6CDDC4, Exactly, 0),
+            cmpScreenY << Memory(0x6284A8, Exactly, 0),
+            cmpMouseY << Memory(0x6CDDC8, Exactly, 0),
+        ],
+        actions=ret.SetNumber(0),
+    )
+    return ret
 
 
 def onInit():
@@ -86,43 +223,47 @@ def onInit():
     mapX, mapY = [k.bit_length() + 3 for k in unpack("<HH", dim[0:4])]
     humans = [p for p in range(12) if ownr[p] == 6]
 
-    global QCUnitID, QCLoc, QCPlayer, QC_X, QC_Y
-    QCUnitID, QCLoc, QCPlayer = 58, 0, 8  # use Valkyrie, loc 0, P9 in default
-    QC_X, QC_Y = 8, 8  # create QC units at grid(2, 2)
+    global QCUnitID, init_loc, QCPlayer, init_x, init_y
+    QCUnitID, init_loc, QCPlayer = 58, 0, 8  # use Valkyrie, loc 0, P9 in default
+    init_x, init_y = 8, 8  # create QC units at grid(2, 2)
 
     global DeathUnits, Trg, VTrg, VTrgLoc
     DeathUnits, Trg, VTrg, VTrgLoc = [[] for i in range(4)]
 
     for key, value in settings.items():
         V, Con, Ret, Point = [d.strip() for d in value.split(',')], '', '', ''
+
+        # default settings
         if key == 'QCUnitID':
             QCUnitID = int(EncodeUnit(value.strip()))
             continue
         elif key == 'QC_XY':
-            QC_X, QC_Y = int(V[0]), int(V[1])
+            init_x, init_y = int(V[0]), int(V[1])
             continue
         elif key == 'QCPlayer':
             QCPlayer = int(EncodePlayer(value.strip()))
             continue
-        elif key == '마우스' or key.lower() == 'mouse':
+
+        if key == '마우스' or key.lower() == 'mouse':
             if len(V) >= len(humans):
                 print('MouseMovelocation enabled: ',
                       ['P{}:{}'.format(h + 1, V[i]) for i, h in enumerate(humans)])
             else:
                 print('※경고! 마우스 사용 불가: 플레이어 수만큼 로케이션을 지정해야합니다!',
                       '마우스 좌표가 데스값으로 저장됩니다! (%s)' % (V[0]))
-            Con = 'f_compareMouse(),'
+            Con = 'MouseMoved(),'
             Point = re.sub(r'(0[xX][0-9a-fA-F]+)', r'f_dwread_epd_safe(EPD(\1))',
                            '0x62848C + 0x6CDDC4 + 65536 * (0x6284A8 + 0x6CDDC8) + 65537 * 64')
         else:
             conditions_ = [_.strip() for _ in key.split(';')]
             for condition_ in conditions_:
-                for virtualkey, offset in KeyCodeDict.items():
-                    if condition_.upper() == virtualkey:
-                        a = 'f_dwread_epd_safe(EPD(0x596A18 + %u))' % (offset)
-                        b = 256 ** (offset % 4)
-                        Con += '%s & %u == %u,' % (a, b, b)
-                        break
+                if condition_.upper() in KeyCodeDict:  # 키인식
+                    VirtualKeyValue = KeyCodeDict[condition_.upper()]
+                    Con += 'VK[{}] == 1,'.format(VirtualKeyValue)
+                    global VK, VK_USE, VK_EPD
+                    VK[VirtualKeyValue] = EUDVariable()
+                    VK_USE[VirtualKeyValue] = 1
+                    VK_EPD[VirtualKeyValue // 4] = 1
                 else:
                     C = [_.strip() for _ in condition_.split(',')]
                     if C[0].lower() == 'xy':
@@ -140,7 +281,7 @@ def onInit():
                         try:
                             Con += 'Memory(%s, %s, %s),' % (C[0], C[1], C[2])
                         except IndexError:
-                            Con += 'f_dwread_epd_safe(EPD(%s))&%s==%s,' % (
+                            Con += 'f_dwread_epd(EPD(%s))&%s==%s,' % (
                                 C[0], C[1], C[1])
                     else:
                         Con += condition_ + ','
@@ -189,114 +330,115 @@ DoActions([
 
 onInit()
 
+QCNewIndex = [Forward() for _ in range(QCNum)]
 bw = EUDByteWriter()
 pOrd = EUDVariable()
-QC = EUDArray([0 for i in range(QCNum * len(humans))])  # 구석 유닛 배열
+QC_EPD = EUDArray(QCNum * len(humans))  # 구석 유닛 배열
+MyQC = EUDArray(QCNum)
 
 
 @EUDFunc
-def SetLocation(locid, x, y):
-    DoActions([
-        SetMemoryEPD(EPD(0x58DC60) + locid * 5 + 0, SetTo, x),
-        SetMemoryEPD(EPD(0x58DC60) + locid * 5 + 1, SetTo, y),
-        SetMemoryEPD(EPD(0x58DC60) + locid * 5 + 2, SetTo, x),
-        SetMemoryEPD(EPD(0x58DC60) + locid * 5 + 3, SetTo, y),
-    ])
+def f_epd2newindex(epd):
+    return (epd * 4 + 0x58A364 - 0x59CCA8) // 336 + 1
 
 
 def onPluginStart():
-    loc = EUDArray([0 for i in range(4)])
-
+    loc = EUDArray([0 for i in range(4)])  # 좌표 저장용
     DoActions([
         # Units.dat - Unit Dimensions
         SetMemory(0x6617C8 + QCUnitID * 8, SetTo, 0x20002),
         SetMemory(0x6617CC + QCUnitID * 8, SetTo, 0x20002),
-
         # Units.dat - Building Dimensions
         SetMemory(0x662860 + QCUnitID * 4, SetTo, 0),
-
         # temp location to create QCUnits
-        SetMemory(0x6509B0, SetTo, EPD(loc)),
-        SetDeaths(CurrentPlayer, SetTo, f_dwread_epd(
-            EPD(0x58DC60) + QCLoc * 5), 0),
+        SetMemory(0x6509B0, SetTo, loc._epd),
+        SetDeaths(CurrentPlayer, SetTo, f_dwread_epd(EPD(0x58DC60) + init_loc * 5 + 0), 0),
         SetMemory(0x6509B0, Add, 1),
-        SetDeaths(CurrentPlayer, SetTo, f_dwread_epd(
-            EPD(0x58DC60) + QCLoc * 5 + 1), 0),
+        SetDeaths(CurrentPlayer, SetTo, f_dwread_epd(EPD(0x58DC60) + init_loc * 5 + 1), 0),
         SetMemory(0x6509B0, Add, 1),
-        SetDeaths(CurrentPlayer, SetTo, f_dwread_epd(
-            EPD(0x58DC60) + QCLoc * 5 + 2), 0),
+        SetDeaths(CurrentPlayer, SetTo, f_dwread_epd(EPD(0x58DC60) + init_loc * 5 + 2), 0),
         SetMemory(0x6509B0, Add, 1),
-        SetDeaths(CurrentPlayer, SetTo, f_dwread_epd(
-            EPD(0x58DC60) + QCLoc * 5 + 3), 0),
+        SetDeaths(CurrentPlayer, SetTo, f_dwread_epd(EPD(0x58DC60) + init_loc * 5 + 3), 0),
     ])
-    f_bwrite(0x6636B8 + QCUnitID, 130)  # Units.dat - Ground Weapon
-    f_bwrite(0x6616E0 + QCUnitID, 130)  # Units.dat - Air Weapon
-    f_bwrite(0x662DB8 + QCUnitID, 0)  # Units.dat - Seek Range
-    f_bwrite(0x663238 + QCUnitID, 0)  # Units.dat - Sight Range
-    SetLocation(QCLoc, QC_X * 32, QC_Y * 32)
-    DoActions(MoveLocation(QCLoc + 1, 227, 11, QCLoc + 1))
+    q, mod = divmod(QCUnitID, 4)
+    f_bwrite_epd(EPD(0x6636B8) + q, mod, 130)  # Units.dat - Ground Weapon
+    f_bwrite_epd(EPD(0x6616E0) + q, mod, 130)  # Units.dat - Air Weapon
+    f_bwrite_epd(EPD(0x662DB8) + q, mod, 0)  # Units.dat - Seek Range
+    f_bwrite_epd(EPD(0x663238) + q, mod, 0)  # Units.dat - Sight Range
+    SetLocation(init_loc, init_x * 32, init_y * 32)
+    DoActions(MoveLocation(init_loc + 1, 227, 11, init_loc + 1))
 
-    pID = f_dwread_epd(EPD(0x57F1B0))
-    for p, player in enumerate(humans):
-        if EUDIf()(pID == player):
-            pOrd << p  # player X가 몇 번째 플레이어인지 (비공유)
-        EUDEndIf()
-        for n in EUDLoopRange(0, QCNum):
-            CPtr, CEPD = f_dwepdread_epd(EPD(0x628438))
-            DoActions(CreateUnit(1, QCUnitID, QCLoc + 1, P8))
-            x, y = f_dwbreak(f_dwread_epd_safe(CEPD + 0x28 // 4))[0:2]
-            SetLocation(QCLoc, x, y)
+    pID, humanArray = f_dwread_epd(EPD(0x57F1B0)), EUDArray(humans)
+    IndexArray = EUDArray([QCNewIndex[n] for n in range(QCNum)])
+    for p in EUDLoopRange(len(humans)):
+        player = humanArray[p]
+        for n in EUDLoopRange(QCNum):
+            DoActions(SetMemory(0x6509B0, SetTo, EPD(0x628438)))
+            ptr, epd = f_dwepdcunitread_cp(0)
             DoActions([
-                GiveUnits(1, QCUnitID, P8, QCLoc + 1, QCPlayer),
-                SetMemory(0x6509B0, SetTo, CEPD + 0x10 // 4),
+                CreateUnit(1, QCUnitID, init_loc + 1, P8),
+                SetMemory(0x6509B0, SetTo, epd + 0x28 // 4),
+            ])
+            x, y = f_dwbreak(f_dwread_cp(0))[0:2]
+            SetLocation(init_loc, x, y)
+            DoActions([
+                GiveUnits(1, QCUnitID, P8, init_loc + 1, QCPlayer),
+                SetMemory(0x6509B0, Subtract, (0x28 - 0x10) // 4),
                 SetDeaths(CurrentPlayer, SetTo, 64 * 65537, 0),  # 목적지 초기화
                 SetMemory(0x6509B0, Add, (0x34 - 0x10) // 4),
                 SetDeaths(CurrentPlayer, SetTo, 0, 0),  # 못움직이게 하기
                 SetMemory(0x6509B0, Add, (0x4C - 0x34) // 4),
                 SetDeaths(CurrentPlayer, Subtract, QCPlayer - player, 0),  # 플레이어 변경
                 SetMemory(0x6509B0, Add, (0xDC - 0x4C) // 4),
-                SetDeaths(CurrentPlayer, Add, 0x4000000, 0),  # 무적
+                SetDeaths(CurrentPlayer, Add, 0x4A00000, 0),  # 무적, 겹치기
             ])
-            QC[n + QCNum * p] = CPtr
+            f_bwrite_epd(epd + 0xA5 // 4, 1, 0)  # uniqueIdentifier
+            QC_EPD[n + QCNum * p] = epd
+            if EUDIf()(pID == player):
+                pOrd << p  # player X가 몇 번째 플레이어인지 (비공유)
+                MyQC[n] = ptr
+                DoActions(SetMemory(IndexArray[n] + 20, SetTo, f_epd2newindex(epd)))
+            EUDEndIf()
     DoActions([
-        SetMemoryEPD(EPD(0x58DC60) + QCLoc * 5, SetTo, loc[0]),
-        SetMemoryEPD(EPD(0x58DC60) + QCLoc * 5 + 1, SetTo, loc[1]),
-        SetMemoryEPD(EPD(0x58DC60) + QCLoc * 5 + 2, SetTo, loc[2]),
-        SetMemoryEPD(EPD(0x58DC60) + QCLoc * 5 + 3, SetTo, loc[3]),
-        MoveLocation(QCLoc + 1, 227, 11, QCLoc + 1)
+        SetMemoryEPD(EPD(0x58DC60) + init_loc * 5 + 0, SetTo, loc[0]),
+        SetMemoryEPD(EPD(0x58DC60) + init_loc * 5 + 1, SetTo, loc[1]),
+        SetMemoryEPD(EPD(0x58DC60) + init_loc * 5 + 2, SetTo, loc[2]),
+        SetMemoryEPD(EPD(0x58DC60) + init_loc * 5 + 3, SetTo, loc[3]),
+        MoveLocation(init_loc + 1, 227, 11, init_loc + 1),
     ])
 
 
-@EUDFunc
-def QueueGameCommand(buf, size):
-    cmdqlen = f_dwread_epd(EPD(0x654AA0))
-    f_memcpy(0x654880 + cmdqlen, buf, size)
-    SetVariables(EPD(0x654AA0), cmdqlen + size)
+Select_NewIndex = Forward()
 
 
 @EUDFunc
-def QueueGameCommand_Select(n, ptrList):
+def QGC_Select():
+    buf = Db(b'..\x09\x0112..')
+    DoActions([Select_NewIndex << SetMemory(buf + 4, SetTo, 0xEDAC)])
+    QueueGameCommand(buf + 2, 4)
+
+
+@EUDFunc
+def QGC_NSelect(n, ptrListepd):
     buf = Db(b'\x090123456789012345678901234')
     bw.seekoffset(buf + 1)
     bw.writebyte(n)
-    i = EUDVariable()
-    i << 0
-    if EUDWhile()(i < n):
-        unitptr = f_dwread_epd(EPD(ptrList) + i)
+    f_dwwrite_epd(EPD(0x6509B0), ptrListepd)
+    for _ in EUDLoopRange(n):
+        unitptr, unitepd = f_dwepdcunitread_cp(0)
         unitIndex = (unitptr - 0x59CCA8) // 336 + 1
-        uniquenessIdentifier = f_bread(unitptr + 0xA5)
+        uniquenessIdentifier = f_bread_epd(unitepd + 0xA5 // 4, 0xA5 % 4)
         targetID = unitIndex | f_bitlshift(uniquenessIdentifier, 11)
         b0, b1 = f_dwbreak(targetID)[2:4]
         bw.writebyte(b0)
         bw.writebyte(b1)
-        i += 1
-    EUDEndWhile()
+        f_dwadd_epd(EPD(0x6509B0), 1)
     bw.flushdword()
     QueueGameCommand(buf, 2 * (n + 1))
 
 
 SelNum, QGCSwitch = EUDCreateVariables(2)  # 유닛 선택 수
-SelMem = Db(48)
+SelMem = EUDArray(12)  # 선택 유닛 복구
 
 
 def getQC(num):
@@ -311,27 +453,51 @@ def getQC(num):
 def beforeTriggerExec():
     oldcp = f_getcurpl()
 
+    VK_ARRAY = EPD(0x596A18)
+    for e, epd in enumerate(VK_EPD):
+        if epd == 1:
+            RESTORE = Forward()
+            RawTrigger(
+                actions=[
+                    SetMemory(RESTORE + 20, SetTo, 0),
+                    [[VK[i + e * 4].SetNumber(0) if isUnproxyInstance(VK[i + e * 4], EUDVariable) else []] for i in range(4)],
+                ]
+            )
+            for i in range(3, -1, -1):
+                RawTrigger(
+                    conditions=MemoryEPD(VK_ARRAY + e, AtLeast, 256 ** i),
+                    actions=[
+                        SetMemoryEPD(VK_ARRAY + e, Subtract, 256 ** i),
+                        SetMemory(RESTORE + 20, Add, 256 ** i),
+                        [VK[i + e * 4].SetNumber(1) if isUnproxyInstance(VK[i + e * 4], EUDVariable) else []],
+                    ]
+                )
+            RawTrigger(actions=[RESTORE << SetMemoryEPD(VK_ARRAY + e, Add, 0xEDAC)])
+
     # 0x6284B8에는 선택한 유닛의 구조오프셋이 들어있습니다. (4바이트 * 12)
     fin = Forward()
     for n in range(QCNum):  # 구석 유닛을 선택했으면 저장하지 않음
-        EUDJumpIf(Memory(0x6284B8, Exactly, QC[n + QCNum * pOrd]), fin)
-    SelNum << 0
-    f_setcurpl(EPD(SelMem))
+        EUDJumpIf(Memory(0x6284B8, Exactly, MyQC[n]), fin)
+    DoActions([
+        SelNum.SetNumber(0),
+        SetMemory(0x6509B0, SetTo, EPD(0x6284B8)),
+    ])
     for i in EUDLoopRange(12):  # 현재 선택 유닛 저장
-        EUDJumpIf(Memory(0x6284B8 + 4 * i, Exactly, 0), fin)
-        f_dwwrite_cp(0, f_dwread_epd_safe(EPD(0x6284B8) + i))
-        DoActions(SetMemory(0x6509B0, Add, 1))
-        SelNum << i + 1
+        EUDJumpIf(Deaths(CurrentPlayer, Exactly, 0, 0), fin)
+        DoActions([
+            SetMemoryEPD(SelMem._epd + i, SetTo, f_dwcunitread_cp_safe(0)),
+            SetMemory(0x6509B0, Add, 1),
+            SelNum.AddNumber(1),
+        ])
     fin << NextTrigger()
 
     RC = Db(b'...\x14XXYY\0\0\xE4\0\x00')
-    # SEL = Db(b'..\x09\x01ALPH')  # Select -> 09 01 알파아이디(2byte) -> 총 4바이트
 
     QGCSwitch << 0
     f_setcurpl(EPD(RC) + 1)
     for i, L in enumerate(VTrg):  # VTrg[n]: (Point, Con, Ret)
         if EUDIf()([eval(L[1])]):
-            if L[1] == 'f_compareMouse(),':
+            if L[1] == 'MouseMoved(),':
                 ScreenX = f_dwread_epd_safe(EPD(0x62848C))
                 ScreenY = f_dwread_epd_safe(EPD(0x6284A8))
                 MouseX = f_dwread_epd_safe(EPD(0x6CDDC4))
@@ -345,7 +511,8 @@ def beforeTriggerExec():
                 f_dwwrite_cp(0, ScreenX + MouseX + 65536 * (ScreenY + MouseY) + 65537 * 64)
             else:
                 f_dwwrite_cp(0, eval(L[0]))
-            QueueGameCommand_Select(1, QC + 4 * (i + QCNum * pOrd))
+            DoActions([QCNewIndex[i] << SetMemory(Select_NewIndex + 20, SetTo, 0xEDAC)])
+            QGC_Select()
             QueueGameCommand(RC + 3, 10)  # RightClick
             QGCSwitch << 1
         EUDEndIf()
@@ -357,7 +524,8 @@ def beforeTriggerExec():
                 f_dwadd_cp(0, getQC(i))
             EUDEndIf()
         if EUDIf()(Deaths(CurrentPlayer, AtLeast, 64 * 65537 + 1, 0)):
-            QueueGameCommand_Select(1, QC + 4 * (n + len(VTrg) + QCNum * pOrd))
+            DoActions([QCNewIndex[n + len(VTrg)] << SetMemory(Select_NewIndex + 20, SetTo, 0xEDAC)])
+            QGC_Select()
             QueueGameCommand(RC + 3, 10)  # RightClick
             QGCSwitch << 1
         EUDEndIf()
@@ -366,13 +534,13 @@ def beforeTriggerExec():
                for human in humans for unit in DeathUnits])
     for p, player in enumerate(humans):
         for i, L in enumerate(VTrg):  # VTrg[n]: ('Point', Con, Ret)
-            f_setcurpl(EPD(QC[i + QCNum * p]) + 4)
+            f_setcurpl(QC_EPD[i + QCNum * p] + 4)
             if EUDIf()(Deaths(CurrentPlayer, AtLeast, 64 * 65537 + 1, 0)):
                 PosXY = f_dwread_cp(0) - 64 * 65537
                 exec(L[2])
             EUDEndIf()
         for n in range(QCNum - len(VTrg)):  # Trg[n]: (Con, Ret)
-            f_setcurpl(EPD(QC[n + len(VTrg) + QCNum * p]) + 4)
+            f_setcurpl(QC_EPD[n + len(VTrg) + QCNum * p] + 4)
             if EUDIf()(Deaths(CurrentPlayer, AtLeast, 64 * 65537 + 1, 0)):
                 DoActions(SetDeaths(CurrentPlayer, Subtract, 64 * 65537, 0))
                 for i, L in enumerate(Trg[n * (mapX + mapY):min(len(Trg), (n + 1) * (mapX + mapY))]):
@@ -393,14 +561,14 @@ def afterTriggerExec():
     SelSwitch << 0
     for p in range(len(humans)):
         for n in range(QCNum):  # 목적지 초기화
-            if EUDIfNot()(MemoryEPD(EPD(QC[n + QCNum * p]) + 4, Exactly, 64 * 65537)):
-                f_dwwrite_epd(EPD(QC[n + QCNum * p]) + 4, 64 * 65537)
+            if EUDIfNot()(MemoryEPD(QC_EPD[n + QCNum * p] + 4, Exactly, 64 * 65537)):
+                f_dwwrite_epd(QC_EPD[n + QCNum * p] + 4, 64 * 65537)
                 if EUDIf()(pOrd == p):
                     SelSwitch << 1
                 EUDEndIf()
             EUDEndIf()
     if EUDIf()(SelNum > 0):  # 변수에 있는 값을 현재 선택유닛에 대입
         if EUDIf()(EUDSCOr()(SelSwitch == 1)(QGCSwitch == 1)()):
-            QueueGameCommand_Select(SelNum, SelMem)
+            QGC_NSelect(SelNum, SelMem._epd)
         EUDEndIf()
     EUDEndIf()
