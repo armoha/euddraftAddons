@@ -4,6 +4,27 @@ from math import ceil
 import re
 
 
+def EncPlayer(s):  # str to int (Player)
+    PlayerDict = {
+        'p1': 0, 'p2': 1, 'p3': 2, 'p4': 3, 'p5': 4, 'p6': 5, 'p7': 6, 'p8': 7, 'p9': 8, 'p10': 9, 'p11': 10, 'p12': 11,
+        'player1': 0, 'player2': 1, 'player3': 2, 'player4': 3,
+        'player5': 4, 'player6': 5, 'player7': 6, 'player8': 7,
+        'player9': 8, 'player10': 9, 'player11': 10, 'player12': 11,
+        'neutral': 11,
+        'currentplayer': 13,
+        'foes': 14,
+        'allies': 15,
+        'neutralplayers': 16,
+        'allplayers': 17,
+        'force1': 18, 'force2': 19, 'force3': 20, 'force4': 21,
+        'nonalliedvictoryplayers': 26
+    }
+    if s.lower() in PlayerDict:
+        return PlayerDict[s.lower()]
+    else:
+        return int(s)
+
+
 @EUDFunc
 def SetLocation(locid, x, y):
     DoActions([
@@ -244,10 +265,7 @@ def onInit():
             init_x, init_y = int(V[0]), int(V[1])
             continue
         elif key == 'QCPlayer':
-            try:
-                QCPlayer = int(EncodePlayer(value.strip()))
-            except EPError:
-                QCPlayer = int(EncodePlayer(int(value.strip())))
+            QCPlayer = EncPlayer(value.strip())
             continue
 
         ConCount = 0
@@ -383,7 +401,7 @@ def onPluginStart():
         SetMemory(0x6617C8 + QCUnitID * 8, SetTo, 0x20002),
         SetMemory(0x6617CC + QCUnitID * 8, SetTo, 0x20002),
         # Units.dat - Building Dimensions
-        SetMemory(0x662860 + QCUnitID * 4, SetTo, 0),
+        # SetMemory(0x662860 + QCUnitID * 4, SetTo, 0),
         # temp location to create QCUnits
         SetMemory(0x6509B0, SetTo, loc._epd),
         SetDeaths(CurrentPlayer, SetTo, f_dwread_epd(EPD(0x58DC60) + init_loc * 5 + 0), 0),
@@ -434,6 +452,7 @@ def onPluginStart():
                 DoActions(SetMemory(IndexArray[n] + 20, SetTo, f_epd2newindex(epd)))
             EUDEndIf()
     DoActions([
+        MoveUnit(All, QCUnitID, QCPlayer, 64, init_loc + 1),
         SetMemoryEPD(EPD(0x58DC60) + init_loc * 5 + 0, SetTo, loc[0]),
         SetMemoryEPD(EPD(0x58DC60) + init_loc * 5 + 1, SetTo, loc[1]),
         SetMemoryEPD(EPD(0x58DC60) + init_loc * 5 + 2, SetTo, loc[2]),

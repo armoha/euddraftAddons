@@ -7,22 +7,32 @@ Trg = []
 Acts = ['' for _ in range(1700)]
 
 
+def EncPlayer(s):  # str to int (Player)
+    PlayerDict = {
+        'p1': 0, 'p2': 1, 'p3': 2, 'p4': 3, 'p5': 4, 'p6': 5, 'p7': 6, 'p8': 7, 'p9': 8, 'p10': 9, 'p11': 10, 'p12': 11,
+        'player1': 0, 'player2': 1, 'player3': 2, 'player4': 3,
+        'player5': 4, 'player6': 5, 'player7': 6, 'player8': 7,
+        'player9': 8, 'player10': 9, 'player11': 10, 'player12': 11,
+        'neutral': 11,
+        'currentplayer': 13,
+        'foes': 14,
+        'allies': 15,
+        'neutralplayers': 16,
+        'allplayers': 17,
+        'force1': 18, 'force2': 19, 'force3': 20, 'force4': 21,
+        'nonalliedvictoryplayers': 26
+    }
+    if s.lower() in PlayerDict:
+        return PlayerDict[s.lower()]
+    else:
+        return int(s)
+
+
 def Index2CUnit(index):  # index를 해당하는 구조오프셋 주소로 바꿉니다.
     if index == 0:
         return 0x59CCA8
     else:
         return 0x628298 - 0x150 * (index - 1)
-
-
-def EncPlayer(player):
-    pDict = {'P1': 0, 'P2': 1, 'P3': 2, 'P4': 3,
-             'P5': 4, 'P6': 5, 'P7': 6, 'P8': 7}
-    try:
-        ret = pDict[player]
-    except KeyError:
-        return player
-    else:
-        return ret
 
 
 def onInit():
@@ -49,9 +59,15 @@ onInit()
 def afterTriggerExec():
     for Index, Act in Trg:  # n이 인덱스 번호
         A = Act.split(',')
-        unit = int(EncodeUnit(A[0].strip()))
-        loc = int(EncodeLocation(A[1].strip()))
-        player = int(EncPlayer(A[2].strip()))
+        try:
+            unit = int(EncodeUnit(A[0].strip()))
+        except EPError:
+            unit = int(A[0].strip())
+        try:
+            loc = int(EncodeLocation(A[1].strip()))
+        except EPError:
+            loc = int(A[1].strip())
+        player = EncPlayer(A[2].strip())
         ptr = Index2CUnit(Index)
         epd = EPD(ptr)
         # Index의 유닛타입이 .edd와 일치하지 않는 경우 RemoveTimer를 1로
