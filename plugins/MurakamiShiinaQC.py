@@ -2,6 +2,7 @@ from eudplib import *
 from struct import unpack
 from math import ceil
 import re
+from itertools import product
 
 
 def EncPlayer(s):  # str to int (Player)
@@ -509,23 +510,45 @@ def beforeTriggerExec():
     VK_ARRAY = EPD(0x596A18)
     for e, epd in enumerate(VK_EPD):
         if epd == 1:
-            RESTORE = Forward()
-            RawTrigger(
-                actions=[
-                    SetMemory(RESTORE + 20, SetTo, 0),
-                    [[VK[i + e * 4].SetNumber(0) if isUnproxyInstance(VK[i + e * 4], EUDVariable) else []] for i in range(4)],
-                ]
-            )
-            for i in range(3, -1, -1):
+            if e in [12, 13, 14]:  # 숫자 키는 별도 처리 (빼는게 안 된다)
+                _end = Forward()
+                NumKeyList = list(set([x for i in range(4) if isUnproxyInstance(VK[i + e * 4], EUDVariable) for x in product([0, 1], repeat=4) if x[i] == 1]))
+                NumKeyList.sort(key=sum)
+                NumKeyTrig = [Forward() for _ in NumKeyList]
                 RawTrigger(
-                    conditions=MemoryEPD(VK_ARRAY + e, AtLeast, 256 ** i),
                     actions=[
-                        SetMemoryEPD(VK_ARRAY + e, Subtract, 256 ** i),
-                        SetMemory(RESTORE + 20, Add, 256 ** i),
-                        [VK[i + e * 4].SetNumber(1) if isUnproxyInstance(VK[i + e * 4], EUDVariable) else []],
+                        [SetNextPtr(NumKeyTrig[n], NumKeyTrig[n+1]) for n in range(len(NumKeyList) - 1)],
+                        [[VK[i + e * 4].SetNumber(0) if isUnproxyInstance(VK[i + e * 4], EUDVariable) else []] for i in range(4)],
                     ]
                 )
-            RawTrigger(actions=[RESTORE << SetMemoryEPD(VK_ARRAY + e, Add, 0xEDAC)])
+                for n, x in enumerate(NumKeyList):
+                    NumKeyTrig[n] << RawTrigger(
+                        conditions=MemoryEPD(VK_ARRAY + e, Exactly, sum([256 ** i if t == 1 else 0 for i, t in enumerate(x)])),
+                        actions=[
+                            [[VK[i + e * 4].SetNumber(1) if isUnproxyInstance(VK[i + e * 4], EUDVariable) and t == 1 else []] for i, t in enumerate(x)],
+                            [SetNextPtr(NumKeyTrig[n], _end) if n + 1 < len(NumKeyList) else []],
+                        ],
+                    )
+                _end << NextTrigger()
+
+            else:
+                RESTORE = Forward()
+                RawTrigger(
+                    actions=[
+                        SetMemory(RESTORE + 20, SetTo, 0),
+                        [[VK[i + e * 4].SetNumber(0) if isUnproxyInstance(VK[i + e * 4], EUDVariable) else []] for i in range(4)],
+                    ]
+                )
+                for i in range(3, -1, -1):
+                    RawTrigger(
+                        conditions=MemoryEPD(VK_ARRAY + e, AtLeast, 256 ** i),
+                        actions=[
+                            SetMemoryEPD(VK_ARRAY + e, Subtract, 256 ** i),
+                            SetMemory(RESTORE + 20, Add, 256 ** i),
+                            [VK[i + e * 4].SetNumber(1) if isUnproxyInstance(VK[i + e * 4], EUDVariable) else []],
+                        ]
+                    )
+                RawTrigger(actions=[RESTORE << SetMemoryEPD(VK_ARRAY + e, Add, 0xEDAC)])
 
     # 0x6284B8에는 선택한 유닛의 구조오프셋이 들어있습니다. (4바이트 * 12)
     fin = Forward()
