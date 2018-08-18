@@ -402,7 +402,7 @@ def onPluginStart():
         SetMemory(0x6617C8 + QCUnitID * 8, SetTo, 0x20002),
         SetMemory(0x6617CC + QCUnitID * 8, SetTo, 0x20002),
         # Units.dat - Building Dimensions
-        # SetMemory(0x662860 + QCUnitID * 4, SetTo, 0),
+        SetMemory(0x662860 + QCUnitID * 4, SetTo, 0),
         # temp location to create QCUnits
         SetMemory(0x6509B0, SetTo, loc._epd),
         SetDeaths(CurrentPlayer, SetTo, f_dwread_epd(EPD(0x58DC60) + init_loc * 5 + 0), 0),
