@@ -1,5 +1,6 @@
 from eudplib import *
 from eudplib.eudlib.stringf.rwcommon import br1, br2
+from operator import itemgetter
 '''[채팅인식4]
 __addr__ : 0x58D900
 __encoding__ : UTF-8, cp949
@@ -10,6 +11,7 @@ __encoding__ : UTF-8, cp949
 ...'''
 
 
+# from my strlib.py https://github.com/armoha/euddraftAddons/blob/master/lib/strlib.py
 @EUDFunc
 def f_memcmp(str1, str2, count):
     c = EUDVariable()
@@ -42,24 +44,28 @@ def f_strlen(src):
 
 
 @EUDFunc
-def f_strstr(string, substring):
+def f_strnstr(string, substring, count):
+    # O(mn)
     br1.seekoffset(string)
     br2.seekoffset(substring)
     dst = EUDVariable()
-    dst << 0
+    dst << -1
 
     b = br2.readbyte()
     if EUDIf()(b == 0):
         EUDReturn(string)
     EUDEndIf()
-    if EUDWhile()(1):
+    if EUDWhile()(count >= 1):
         a = br1.readbyte()
         dst += 1
-        if EUDIf()(a == 0):
+        count -= 1
+        if EUDIf()(EUDSCOr()(a == 0)()):
             EUDBreak()
         if EUDElseIfNot()(a == b):
             EUDContinue()
         EUDEndIf()
+        br1_epdoffset = br1._offset
+        br1_suboffset = br1._suboffset
         if EUDWhile()(1):
             c = br2.readbyte()
             if EUDIf()(c == 0):
@@ -68,6 +74,8 @@ def f_strstr(string, substring):
                 EUDBreak()
             EUDEndIf()
         EUDEndWhile()
+        br1.seekepd(br1_epdoffset)
+        br1._suboffset = br1_suboffset
         br2.seekoffset(substring + 1)
     EUDEndWhile()
     EUDReturn(-1)
@@ -76,10 +84,8 @@ def f_strstr(string, substring):
 def onInit():
     global Addr, lenAddr, ptrAddr, patternAddr
     Addr = 0x58D900
-    lenAddr = 0
-    ptrAddr = 0
-    patternAddr = 0
-    chatList, valueList, regexList = [], [], []
+    lenAddr, ptrAddr, patternAddr = 0, 0, 0
+    chatList, regexList = [], []
     chatEncoding = set(['UTF-8'])
 
     for k, v in settings.items():
@@ -90,76 +96,85 @@ def onInit():
             try:
                 Addr = int(v, 0)  # 주소를 정수로 가져온다.
             except (ValueError):
-                print('오류: __addr__의 값"%s"이 정수가 아닙니다.' % v)
+                raise EPError('오류: __addr__의 값"%s"이 정수가 아닙니다.' % v)
         elif k == '__lenAddr__':
             try:
                 lenAddr = int(v, 0)  # 주소를 정수로 가져온다.
             except (ValueError):
-                print('오류: __lenAddr__의 값"%s"이 정수가 아닙니다.' % v)
+                raise EPError('오류: __lenAddr__의 값"%s"이 정수가 아닙니다.' % v)
         elif k == '__ptrAddr__':
             try:
                 ptrAddr = int(v, 0)  # 주소를 정수로 가져온다.
             except (ValueError):
-                print('오류: __ptrAddr__의 값"%s"이 정수가 아닙니다.' % v)
+                raise EPError('오류: __ptrAddr__의 값"%s"이 정수가 아닙니다.' % v)
         elif k == '__patternAddr__':
             try:
                 patternAddr = int(v, 0)  # 주소를 정수로 가져온다.
             except (ValueError):
-                print('오류: __patternAddr__의 값"%s"이 정수가 아닙니다.' % v)
+                raise EPError('오류: __patternAddr__의 값"%s"이 정수가 아닙니다.' % v)
         elif k == '__encoding__':
             chatEncoding = set([_.strip() for _ in v.split(',')])
         else:
-            chatList.append(k)
-            valueList.append(int(v, 0))
+            if v == '1' or v == '0':
+                raise EPError('오류: 더할 값은 2 이상이어야 합니다.')
+            chatList.append([k.strip(), int(v, 0)])
 
-    try:
-        chatList, valueList = zip(*sorted(zip(chatList, valueList)))
-    except ValueError:
-        pass
+    chatList.sort(key=itemgetter(1, 0))
     regexList.sort()
     for i, s in enumerate(chatList):
-        print('{} : {}'.format(valueList[i], s))
-    for r in regexList:
-        print('{3} : ^{0}.*{1}.*{2}$'.format(*r))
+        print('{} : {}'.format(s[1], s[0]))
     print('1 : (해당 없음)',
           '__encoding__ : {}'.format(chatEncoding),
           '__addr__ : %s' % hex(Addr),
           '__lenAddr__ : %s' % hex(lenAddr),
           '__ptrAddr__ : %s' % hex(ptrAddr),
-          '__patternAddr__ : %s' % hex(patternAddr),
-          'Memory(%s, Exactly, 왼쪽의 값);을 조건으로 쓰시면 됩니다.' % hex(Addr), sep='\n')
+          'Memory(%s, Exactly, 왼쪽의 값);을 조건으로 쓰시면 됩니다. 총 개수: %d' % (hex(Addr), len(chatList)), sep='\n')
+    for r in regexList:
+        print('{3} : ^{0}.*{1}.*{2}$'.format(*r))
+    print('__patternAddr__ : %s' % hex(patternAddr))
 
-    global chatDict
-    chatDict = {}
+    chatSet = set()
+    global minlen, maxlen
+    minlen, maxlen = 78, 0
     for i, s in enumerate(chatList):
-        chatSet = set([])
         for e in chatEncoding:
-            chatSet.add(s.encode(e))
-        for c in chatSet:
-            key = len(c)
-            if key in chatDict:
-                chatDict[key].append([c, valueList[i]])
-            else:
-                chatDict[key] = [[c, valueList[i]]]
+            t = s[0].encode(e)
+            chatSet.add((t, s[1]))
+            if len(t) > 78:
+                raise EPError("스타크래프트에서 채팅은 78바이트까지만 입력할 수 있습니다.\n현재 크기: {} > {}".format(len(t), s[0]))
+            if len(t) > maxlen:
+                maxlen = len(t)
+            if len(t) < minlen:
+                minlen = len(t)
+    global chatDict
+    chatDict = [0 for _ in range(maxlen - minlen + 1)]
+    chatList = list(chatSet)
+    for i, s in enumerate(chatList):
+        size = len(s[0]) - minlen
+        if isinstance(chatDict[size], list):
+            chatDict[size][0].append(Db(s[0] + b'\0'))
+            chatDict[size][1].append(s[1])
+        else:
+            chatDict[size] = [[Db(s[0] + b'\0')], [s[1]]]
+    for i, s in enumerate(chatDict):
+        if isinstance(s, list):
+            chatDict[i] = EUDArray([len(s[0])] + s[0] + s[1])
+    chatDict = EUDArray(chatDict)
 
-    rSet = set([])
+    rSet = set()
     for r in regexList:
         for e in chatEncoding:
             rSet.add((r[0].encode(e), r[1].encode(e), r[2].encode(e), r[3]))
     global rList, rListlen
     rList = list(rSet)
     for i, r in enumerate(rList):
-        rList[i] = EUDArray((Db(r[0]), Db(r[1]), Db(r[2]),
+        rList[i] = EUDArray((Db(r[0] + b'\0'), Db(r[1] + b'\0'), Db(r[2] + b'\0'),
                              r[3], len(r[0]), len(r[2])))
     rListlen = len(rList)
     rList = EUDArray(rList)
 
 
 onInit()
-for k, v in chatDict.items():
-    chatDict[k] = [EUDArray([Db(s[0]) for s in v]),
-                   EUDArray([s[1] for s in v]), len(v)]
-
 
 con = [[Forward() for _ in range(2)] for __ in range(5)]
 act = [[Forward() for _ in range(2)] for __ in range(5)]
@@ -258,16 +273,21 @@ def f_chatcmp():
     chatlen = f_strlen(chatptr)
     if lenAddr >= 1:
         DoActions(SetMemory(lenAddr, SetTo, chatlen))
-    EUDSwitch(chatlen)
-    for k, v in chatDict.items():
-        EUDSwitchCase()(int(k))
-        for i in EUDLoopRange(v[2]):
-            if EUDIf()(f_strcmp(chatptr, v[0][i]) == 0):
-                DoActions(SetMemory(Addr, SetTo, v[1][i]))
-                EUDJump(exit)
-            EUDEndIf()
-        EUDBreak()
-    EUDEndSwitch()
+    if EUDIf()([chatlen >= minlen, chatlen <= maxlen]):
+        t = EUDArray.cast(chatDict[chatlen - minlen])
+        if EUDIf()(t >= 1):
+            n = t[0]
+            i = EUDVariable()
+            i << 1
+            if EUDWhile()(i <= n):
+                if EUDIf()(f_strcmp(chatptr, t[i]) == 0):
+                    DoActions(SetMemory(Addr, SetTo, t[n+i]))
+                    EUDJump(exit)
+                EUDEndIf()
+                i += 1
+            EUDEndWhile()
+        EUDEndIf()
+    EUDEndIf()
     if ptrAddr >= 1:
         DoActions(SetMemory(ptrAddr, SetTo, chatptr))
     if rListlen >= 1:
@@ -276,7 +296,7 @@ def f_chatcmp():
             if EUDIf()(f_memcmp(chatptr, subArray[0], subArray[4]) == 0):
                 endlen = subArray[5]
                 if EUDIf()(f_memcmp(chatptr + chatlen - endlen, subArray[2], endlen) == 0):
-                    if EUDIfNot()(f_strstr(chatptr, subArray[1]) == -1):
+                    if EUDIfNot()(f_strnstr(chatptr, subArray[1], chatlen) == -1):
                         DoActions(SetMemory(patternAddr, SetTo, subArray[3]))
                         EUDJump(exit)
                     EUDEndIf()
