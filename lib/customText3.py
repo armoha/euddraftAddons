@@ -151,7 +151,7 @@ class f_get:  # ptr/epd 중간 저장
         self._value = value
 
 
-def b2i(x):
+def f_b2i(x):
     return int.from_bytes(x, byteorder='little')
 
 
@@ -161,7 +161,7 @@ def f_cp949_print(dst, *args):
 
     args = FlattenList(args)
     for arg in args:
-        if isUnproxyInstance(arg, f_str):
+        if isUnproxyInstance(arg, f_str) or isUnproxyInstance(arg, f_s2u):
             dst = f_dbstr_addstr(dst, arg._value)
         elif isUnproxyInstance(arg, f_color):
             dst = f_dbstr_addstr(dst, Color[arg._value])
@@ -405,7 +405,7 @@ def f_addbyte_epd(dstp, b):
     while len(b) % 4 >= 1:
         b = b + b"\x0D"
     for i in range(len(b) // 4):
-        f_dwwrite_epd(dstp, b2i(b[4 * i:4 * (i + 1)]))
+        f_dwwrite_epd(dstp, f_b2i(b[4 * i:4 * (i + 1)]))
         dstp += 1
     return dstp
 
@@ -420,7 +420,7 @@ def f_add1c_epd(dstp, s, encoding='UTF-8'):
     color = ""
     for i, c in enumerate(s):
         c_ = c.encode(encoding)
-        ci = b2i(c_)
+        ci = f_b2i(c_)
         if (ci >= 0x01 and ci <= 0x1F and
                 ci != 0x12 and ci != 0x13):
             color = c
@@ -480,7 +480,7 @@ def f_addptr_epd(dstp, number):
 def f_cp949_print_epd(dstp, *args):
     arg = FlattenList(args)
     for arg in args:
-        if isUnproxyInstance(arg, f_str):
+        if isUnproxyInstance(arg, f_str) or isUnproxyInstance(arg, f_s2u):
             dstp = f_addstr_epd(dstp, arg._value)
         elif isUnproxyInstance(arg, f_color):
             dstp = f_addstr_epd(dstp, Color[arg._value])
