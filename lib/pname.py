@@ -123,10 +123,11 @@ def SetName(player, *name):
         )
     DoActions([addPtr << SetMemory(0x640B58, Add, 0)])
 
-    if player == CurrentPlayer:
-        player = f_getcurpl()
     if isUnproxyInstance(player, type(P1)):
-        player = EncodePlayer(player)
+        if player == CurrentPlayer:
+            player = f_getcurpl()
+        else:
+            player = EncodePlayer(player)
     EUDJumpIf(f_playerexist(player) == 0, _end)
     bname, blen = EPD(0x57EEEC) + 9 * player, baselen[player]
 
