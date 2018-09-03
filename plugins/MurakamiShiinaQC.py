@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from eudplib import *
 from struct import unpack
 from math import ceil
@@ -171,7 +172,7 @@ KeyCodeDict = {
     'RALT': 0x15, 'JUNJA': 0x17, 'FINAL': 0x18, 'RCTRL': 0x19, 'ESC': 0x1B,
     'CONVERT': 0x1C, 'NONCONVERT': 0x1D, 'ACCEPT': 0x1E, 'MODECHANGE': 0x1F,
     'SPACE': 0x20, 'PGUP': 0x21, 'PGDN': 0x22, 'END': 0x23, 'HOME': 0x24,
-    'LEFT': 0x25, 'UP': 0x26, 'RIGHT': 0x27, 'DOWN': 0x28,  # 방향키
+    'LEFT': 0x25, 'UP': 0x26, 'RIGHT': 0x27, 'DOWN': 0x28,  # ARROW keys
     'SELECT': 0x29, 'PRINTSCREEN': 0x2A, 'EXECUTE': 0x2B, 'SNAPSHOT': 0x2C,
     'INSERT': 0x2D, 'DELETE': 0x2E, 'HELP': 0x2F,
     '0': 0x30, '1': 0x31, '2': 0x32, '3': 0x33, '4': 0x34,
@@ -181,7 +182,7 @@ KeyCodeDict = {
     'M': 0x4D, 'N': 0x4E, 'O': 0x4F, 'P': 0x50, 'Q': 0x51, 'R': 0x52,
     'S': 0x53, 'T': 0x54, 'U': 0x55, 'V': 0x56, 'W': 0x57, 'X': 0x58,
     'Y': 0x59, 'Z': 0x5A,
-    'LWIN': 0x5B, 'RWIN': 0x5C, '속성': 0x5D, 'SLEEP': 0x5F,
+    'LWIN': 0x5B, 'RWIN': 0x5C, 'APPS': 0x5D, 'SLEEP': 0x5F,
     'NUMPAD0': 0x60, 'NUMPAD1': 0x61, 'NUMPAD2': 0x62, 'NUMPAD3': 0x63,
     'NUMPAD4': 0x64, 'NUMPAD5': 0x65, 'NUMPAD6': 0x66, 'NUMPAD7': 0x67,
     'NUMPAD8': 0x68, 'NUMPAD9': 0x69,
@@ -275,15 +276,15 @@ def onInit():
                 print('MouseMovelocation enabled: ',
                       ['P{}:{}'.format(h + 1, V[i]) for i, h in enumerate(humans)])
             else:
-                print('※경고! 마우스 사용 불가: 플레이어 수만큼 로케이션을 지정해야합니다!',
-                      '마우스 좌표가 데스값으로 저장됩니다! (%s)' % (V[0]))
+                print('※ Error: Mouse following locations should be assigned as much as human players',
+                      'Mouse coordinates will send to death counter! (%s)' % (V[0]))
             Con = 'MouseMoved(),'
             Point = re.sub(r'(0[xX][0-9a-fA-F]+)', r'f_dwread_epd_safe(EPD(\1))',
                            '0x62848C + 0x6CDDC4 + 65536 * (0x6284A8 + 0x6CDDC8) + 65537 * 64')
         else:
             conditions_ = [_.strip() for _ in key.split(';')]
             for condition_ in conditions_:
-                if condition_.upper() in KeyCodeDict:  # 키인식
+                if condition_.upper() in KeyCodeDict:  # KeyPressDetect
                     VirtualKeyValue = KeyCodeDict[condition_.upper()]
                     Con += '(VK[{}] == 1)'.format(VirtualKeyValue)
                     ConCount += 1
@@ -377,7 +378,7 @@ DoActions([
     QCNum = len(VTrg) + ceil(len(Trg) / (mapX + mapY))
     DeathUnits = set(DeathUnits)
 
-    print("[무라카미시이나QC] dim. %ux%u, %u humans, %u QCUnits per capita" %
+    print("[MSQC] map dim. %ux%u, %u humans, %u QCUnits per capita" %
           (2 ** (mapX - 4), 2 ** (mapY - 4), len(humans), QCNum))
 
 
@@ -386,7 +387,7 @@ onInit()
 QCNewIndex = [Forward() for _ in range(QCNum)]
 bw = EUDByteWriter()
 pOrd = EUDVariable()
-QC_EPD = EUDArray(QCNum * len(humans))  # 구석 유닛 배열
+QC_EPD = EUDArray(QCNum * len(humans))  # QCUnitArray
 MyQC = EUDArray(QCNum)
 
 
@@ -396,7 +397,7 @@ def f_epd2newindex(epd):
 
 
 def onPluginStart():
-    loc = EUDArray([0 for i in range(4)])  # 좌표 저장용
+    loc = EUDArray(4)  # temporary saves Locations coordinates
     DoActions([
         # Units.dat - Unit Dimensions
         SetMemory(0x6617C8 + QCUnitID * 8, SetTo, 0x20002),
@@ -437,18 +438,18 @@ def onPluginStart():
             DoActions([
                 GiveUnits(1, QCUnitID, P8, init_loc + 1, QCPlayer),
                 SetMemory(0x6509B0, Subtract, (0x28 - 0x10) // 4),
-                SetDeaths(CurrentPlayer, SetTo, 64 * 65537, 0),  # 목적지 초기화
+                SetDeaths(CurrentPlayer, SetTo, 64 * 65537, 0),  # reset waypoint
                 SetMemory(0x6509B0, Add, (0x34 - 0x10) // 4),
-                SetDeaths(CurrentPlayer, SetTo, 0, 0),  # 못움직이게 하기
+                SetDeaths(CurrentPlayer, SetTo, 0, 0),  # immobilize
                 SetMemory(0x6509B0, Add, (0x4C - 0x34) // 4),
-                SetDeaths(CurrentPlayer, Subtract, QCPlayer - player, 0),  # 플레이어 변경
+                SetDeaths(CurrentPlayer, Subtract, QCPlayer - player, 0),  # modify unit's player
                 SetMemory(0x6509B0, Add, (0xDC - 0x4C) // 4),
-                SetDeaths(CurrentPlayer, Add, 0x4A00000, 0),  # 무적, 겹치기
+                SetDeaths(CurrentPlayer, Add, 0x4A00000, 0),  # invincible, stackable
             ])
             f_bwrite_epd(epd + 0xA5 // 4, 1, 0)  # uniqueIdentifier
             QC_EPD[n + QCNum * p] = epd
             if EUDIf()(pID == player):
-                pOrd << p  # player X가 몇 번째 플레이어인지 (비공유)
+                pOrd << p  # player's own order alomg humans (desync)
                 MyQC[n] = ptr
                 DoActions(SetMemory(IndexArray[n] + 20, SetTo, f_epd2newindex(epd)))
             EUDEndIf()
@@ -491,8 +492,8 @@ def QGC_NSelect(n, ptrListepd):
     QueueGameCommand(buf, 2 * (n + 1))
 
 
-SelNum, QGCSwitch = EUDCreateVariables(2)  # 유닛 선택 수
-SelMem = EUDArray(12)  # 선택 유닛 복구
+SelNum, QGCSwitch = EUDCreateVariables(2)  # number of units in selection
+SelMem = EUDArray(12)  # backup selected units
 
 
 def getQC(num):
@@ -510,7 +511,7 @@ def beforeTriggerExec():
     VK_ARRAY = EPD(0x596A18)
     for e, epd in enumerate(VK_EPD):
         if epd == 1:
-            if e in [12, 13, 14]:  # 숫자 키는 별도 처리 (빼는게 안 된다)
+            if e in [12, 13, 14]:  # Number key presses should be tackled specially (read-only)
                 _end = Forward()
                 NumKeyList = list(set([x for i in range(4) if isUnproxyInstance(VK[i + e * 4], EUDVariable) for x in product([0, 1], repeat=4) if x[i] == 1]))
                 NumKeyList.sort(key=sum)
@@ -550,15 +551,15 @@ def beforeTriggerExec():
                     )
                 RawTrigger(actions=[RESTORE << SetMemoryEPD(VK_ARRAY + e, Add, 0xEDAC)])
 
-    # 0x6284B8에는 선택한 유닛의 구조오프셋이 들어있습니다. (4바이트 * 12)
+    # 0x6284B8: (desync) *CUnits of units in selection (4 bytes * 12 units)
     fin = Forward()
-    for n in range(QCNum):  # 구석 유닛을 선택했으면 저장하지 않음
+    for n in range(QCNum):  # don't save if QC units are selected
         EUDJumpIf(Memory(0x6284B8, Exactly, MyQC[n]), fin)
     DoActions([
         SelNum.SetNumber(0),
         SetMemory(0x6509B0, SetTo, EPD(0x6284B8)),
     ])
-    for i in EUDLoopRange(12):  # 현재 선택 유닛 저장
+    for i in EUDLoopRange(12):  # backup units in selection
         EUDJumpIf(Deaths(CurrentPlayer, Exactly, 0, 0), fin)
         DoActions([
             SetMemoryEPD(SelMem._epd + i, SetTo, f_dwcunitread_cp_safe(0)),
@@ -596,7 +597,7 @@ def beforeTriggerExec():
     for n in range(QCNum - len(VTrg)):  # Trg[n]: (Con, Ret)
         f_dwwrite_cp(0, 64 * 65537)
         for i, L in enumerate(Trg[n * (mapX + mapY):min(len(Trg), (n + 1) * (mapX + mapY))]):
-            if EUDIf()([eval(L[0])]):  # 조건을 만족 할 경우 우클릭할 좌표 더함
+            if EUDIf()([eval(L[0])]):  # Add coordinates for RightClick if conditions are fulfilled
                 f_dwadd_cp(0, getQC(i))
             EUDEndIf()
         if EUDIf()(Deaths(CurrentPlayer, AtLeast, 64 * 65537 + 1, 0)):
@@ -632,18 +633,18 @@ def beforeTriggerExec():
 
 
 def afterTriggerExec():
-    # 구석 유닛의 목적지가 64, 64가 아닐 경우(조건을 하나라도 만족했을 경우) -> 선택한 유닛 초기화, 목적지 초기화
+    # if QC unit's waypoint isn't (64, 64), it means at least 1 of conditions are fulfilled, so recover original unit selection and reset waypoints
     SelSwitch = EUDVariable()
     SelSwitch << 0
     for p in range(len(humans)):
-        for n in range(QCNum):  # 목적지 초기화
+        for n in range(QCNum):  # reset waypoints
             if EUDIfNot()(MemoryEPD(QC_EPD[n + QCNum * p] + 4, Exactly, 64 * 65537)):
                 f_dwwrite_epd(QC_EPD[n + QCNum * p] + 4, 64 * 65537)
                 if EUDIf()(pOrd == p):
                     SelSwitch << 1
                 EUDEndIf()
             EUDEndIf()
-    if EUDIf()(SelNum > 0):  # 변수에 있는 값을 현재 선택유닛에 대입
+    if EUDIf()(SelNum > 0):  # recovers unit selection from array
         if EUDIf()(EUDSCOr()(SelSwitch == 1)(QGCSwitch == 1)()):
             QGC_NSelect(SelNum, SelMem._epd)
         EUDEndIf()
