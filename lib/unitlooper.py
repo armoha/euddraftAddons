@@ -84,15 +84,58 @@ def f_dwepdcunitread_epd_safe(targetplayer):
     return ret, retepd
 
 
+@EUDFunc
+def f_bread2_epd(epd, subp):
+    oldcp = f_getcurpl()
+    b = EUDVariable()
+    addact = Forward()
+    addact_number = addact + 20
+    DoActions([
+        SetCurrentPlayer(epd),
+        b.SetNumber(0),
+        SetMemory(addact_number, SetTo, 0),
+    ])
+    EUDSwitch(subp)
+    for i in range(4):
+        EUDSwitchCase()(i)
+        for j in range(31, -1, -1):
+            if 8 * i <= j < 8 * (i + 1):
+                RawTrigger(
+                    conditions=Deaths(CurrentPlayer, AtLeast, 2**j, 0),
+                    actions=[
+                        SetDeaths(CurrentPlayer, Subtract, 2**j, 0),
+                        SetMemory(addact_number, Add, 2**j),
+                        b.AddNumber(2**j)
+                    ]
+                )
+            else:
+                RawTrigger(
+                    conditions=Deaths(CurrentPlayer, AtLeast, 2**j, 0),
+                    actions=[
+                        SetDeaths(CurrentPlayer, Subtract, 2**j, 0),
+                        SetMemory(addact_number, Add, 2**j),
+                    ]
+                )
+            if j == 8 * i:
+                break
+        EUDBreak()
+    EUDEndSwitch()
+    DoActions([
+        addact << SetDeaths(CurrentPlayer, Add, 0xEDAC, 0),
+        SetCurrentPlayer(oldcp),
+    ])
+    return b
+
+
 def LoopNewUnit():
-    firstUnitPtr = 0x628430
-    EUDCreateBlock('newunitloop', firstUnitPtr)
-    ptr, epd = f_dwepdcunitread_epd_safe(EPD(firstUnitPtr))
+    firstUnitPtr = EPD(0x628430)
+    EUDCreateBlock('newunitloop', 'newlo')
     tos0 = EUDLightVariable()
     tos0 << 0
 
+    ptr, epd = f_dwepdcunitread_epd_safe(firstUnitPtr)
     if EUDWhile()(ptr >= 1):
-        targetOrderSpecial = f_dwread_epd(epd + 0xA5 // 4) & 0xFF00
+        targetOrderSpecial = f_bread2_epd(epd + 0xA5 // 4, 1)
         if EUDIf()(targetOrderSpecial >= 0x100):
             f_dwsubtract_epd(epd + 0xA5 // 4, targetOrderSpecial)
             yield ptr, epd
