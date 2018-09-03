@@ -20,12 +20,8 @@ effect_keys = set()
 reset_keys = set()
 cts = dict()
 alert_manual_reset = set()
-identifiers = itertools.product(
-        ["\x02", "\x03", "\x04", "\x06",
-         "\x07", "\x08", "\x0D", "\x0E", "\x0F",
-         "\x10", "\x11", "\x15", "\x16", "\x17",
-         "\x18", "\x19", "\x1A", "\x1B", "\x1C",
-         "\x1D", "\x1E", "\x1F"], repeat=6)
+color_codes = "\x02\x03\x04\x06\x07\x08\x0D\x0E\x0F\x10\x11\x15\x16\x17\x18\x19\x1A\x1B\x1C\x1D\x1E\x1F"
+identifiers = itertools.product(color_codes, repeat=6)
 identifier_gen = itertools.cycle(identifiers)
 start = EUDVariable()
 
@@ -191,7 +187,7 @@ def f_write_ct_str(*args):
 def f_effectBase(*args, line=0, autoreset=True, timer=None):
     f_update_txtPtr()
     c0, c1, c2, c3, c4, c5 = next(identifier_gen)
-    w1, w2, w3 = [ct.b2i(u2b(x)) for x in (c0 + c1, c2 + c3, c4 + c5)]
+    w1, w2, w3 = [ct.f_b2i(u2b(x)) for x in (c0 + c1, c2 + c3, c4 + c5)]
     SetVariables([odds_1, odds_2, even_1, even_2, display_text, restore_txtPtr],
                  [w1 + w2 * 0x10000, w3 + 0x0D0D * 0x10000,
                   w1 * 0x10000, w2 + w3 * 0x10000, 1, 1])
