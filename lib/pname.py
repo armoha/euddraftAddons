@@ -1,5 +1,14 @@
 from eudplib import *
-import customText4 as ct
+try:
+    import tempcustomText as ct
+except ImportError:
+    try:
+        import customText4 as ct
+    except ImportError:
+        try:
+            import customText3 as ct
+        except ImportError:
+            raise EPError("customText 라이브러리가 필요합니다.")
 from eudplib.eudlib.stringf.rwcommon import br1, br2
 
 baselen = EUDArray(8)
