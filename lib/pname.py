@@ -9,6 +9,12 @@ except ImportError:
             import customText3 as ct
         except ImportError:
             raise EPError("customText 라이브러리가 필요합니다.")
+        else:
+            print("pname: customText3 사용")
+    else:
+        print("pname: customText4 사용")
+else:
+    print("pname: tempcustomText 사용")
 from eudplib.eudlib.stringf.rwcommon import br1, br2
 
 baselen = EUDArray(8)
@@ -112,25 +118,38 @@ def _init():
 
 
 EUDOnStart(_init)
+isTxtPtrUnchanged = EUDLightVariable()
 
+
+def optimize():
+    prevPtr, addPtr = Forward(), Forward()
+
+    DoActions(isTxtPtrUnchanged.SetNumber(0))
+    RawTrigger(
+        conditions=[prevPtr << Memory(0x640B58, Exactly, 0xEDAC)],
+        actions=isTxtPtrUnchanged.SetNumber(1),
+    )
+    if EUDIf()(isTxtPtrUnchanged.Exactly(0)):
+        DoActions([
+            SetMemory(prevPtr + 8, SetTo, 0),
+            SetMemory(addPtr + 20, SetTo, 0),
+        ])
+        for i in range(3, -1, -1):
+            RawTrigger(
+                conditions=Memory(0x640B58, AtLeast, 2**i),
+                actions=[
+                    SetMemory(0x640B58, Subtract, 2**i),
+                    SetMemory(addPtr + 20, Add, 2**i),
+                    SetMemory(prevPtr + 8, Add, 2**i)
+                ]
+            )
+        DoActions([addPtr << SetMemory(0x640B58, Add, 0)])
+    EUDEndIf()
+        
 
 def SetName(player, *name):
-    _end, prevPtr, addPtr = [Forward() for i in range(3)]
-    EUDJumpIf([prevPtr << Memory(0x640B58, Exactly, 0xEDAC)], _end)
-    DoActions([
-        SetMemory(prevPtr + 8, SetTo, 0),
-        SetMemory(addPtr + 20, SetTo, 0),
-    ])
-    for i in range(3, -1, -1):
-        RawTrigger(
-            conditions=Memory(0x640B58, AtLeast, 2**i),
-            actions=[
-                SetMemory(0x640B58, Subtract, 2**i),
-                SetMemory(addPtr + 20, Add, 2**i),
-                SetMemory(prevPtr + 8, Add, 2**i)
-            ]
-        )
-    DoActions([addPtr << SetMemory(0x640B58, Add, 0)])
+    _end = Forward()
+    EUDJumpIf(isTxtPtrUnchanged.Exactly(1), _end)
 
     if isUnproxyInstance(player, type(P1)):
         if player == CurrentPlayer:
