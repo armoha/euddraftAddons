@@ -121,7 +121,7 @@ EUDOnStart(_init)
 isTxtPtrUnchanged = EUDLightVariable()
 
 
-def optimize():
+def Optimize():
     prevPtr, addPtr = Forward(), Forward()
 
     DoActions(isTxtPtrUnchanged.SetNumber(0))
