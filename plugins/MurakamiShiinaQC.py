@@ -239,6 +239,8 @@ def MouseMoved():
 
 
 def onInit():
+    global safety_option
+    safety_option = 1
     # get map size & human player
     global mapX, mapY, humans
     chkt = GetChkTokenized()
@@ -268,6 +270,9 @@ def onInit():
             continue
         elif key == 'QCPlayer':
             QCPlayer = EncPlayer(value.strip())
+            continue
+        elif key == 'QC_SAFETY':
+            safety_option = int(V[0])
             continue
 
         ConCount = 0
@@ -396,9 +401,16 @@ def f_epd2newindex(epd):
     return (epd * 4 + 0x58A364 - 0x59CCA8) // 336 + 1
 
 
-def onPluginStart():
-    loc = EUDArray(4)  # temporary saves Locations coordinates
+@EUDFunc
+def initQC():
+    if EUDPlayerLoop()():
+        DoActions(DisplayText("\x13\x16Respawning QC Units..."))
+    EUDEndPlayerLoop()
+    loc = EUDArray(5)  # temporary saves Locations coordinates
+    loc_epd = EPD(0x58DC60) + init_loc * 5
+    loc_flags = f_dwread_epd(loc_epd + 4)
     DoActions([
+        SetMemory(0x664080 + QCUnitID * 4, SetTo, 0x38000004),  # Advanced Flags
         # Units.dat - Unit Dimensions
         SetMemory(0x6617C8 + QCUnitID * 8, SetTo, 0x20002),
         SetMemory(0x6617CC + QCUnitID * 8, SetTo, 0x20002),
@@ -406,21 +418,30 @@ def onPluginStart():
         SetMemory(0x662860 + QCUnitID * 4, SetTo, 0),
         # temp location to create QCUnits
         SetMemory(0x6509B0, SetTo, loc._epd),
-        SetDeaths(CurrentPlayer, SetTo, f_dwread_epd(EPD(0x58DC60) + init_loc * 5 + 0), 0),
+        SetDeaths(CurrentPlayer, SetTo, f_dwread_epd(loc_epd + 0), 0),
         SetMemory(0x6509B0, Add, 1),
-        SetDeaths(CurrentPlayer, SetTo, f_dwread_epd(EPD(0x58DC60) + init_loc * 5 + 1), 0),
+        SetDeaths(CurrentPlayer, SetTo, f_dwread_epd(loc_epd + 1), 0),
         SetMemory(0x6509B0, Add, 1),
-        SetDeaths(CurrentPlayer, SetTo, f_dwread_epd(EPD(0x58DC60) + init_loc * 5 + 2), 0),
+        SetDeaths(CurrentPlayer, SetTo, f_dwread_epd(loc_epd + 2), 0),
         SetMemory(0x6509B0, Add, 1),
-        SetDeaths(CurrentPlayer, SetTo, f_dwread_epd(EPD(0x58DC60) + init_loc * 5 + 3), 0),
+        SetDeaths(CurrentPlayer, SetTo, f_dwread_epd(loc_epd + 3), 0),
+        SetMemory(0x6509B0, Add, 1),
+        SetDeaths(CurrentPlayer, SetTo, loc_flags, 0),
     ])
     q, mod = divmod(QCUnitID, 4)
+    q2, m2 = divmod(QCUnitID, 2)
     f_bwrite_epd(EPD(0x6636B8) + q, mod, 130)  # Units.dat - Ground Weapon
     f_bwrite_epd(EPD(0x6616E0) + q, mod, 130)  # Units.dat - Air Weapon
     f_bwrite_epd(EPD(0x662DB8) + q, mod, 0)  # Units.dat - Seek Range
     f_bwrite_epd(EPD(0x663238) + q, mod, 0)  # Units.dat - Sight Range
+    f_wwrite_epd(EPD(0x661518) + q2, 2*m2, 0x1CF)  # Editor Ability Flags
+    f_bwrite_epd(EPD(0x660FC8) + q, mod, 0xC5)  # MovementFlags
+    f_bwrite_epd(EPD(0x663150) + q, mod, 0x13)  # Elevation
     SetLocation(init_loc, init_x * 32, init_y * 32)
-    DoActions(MoveLocation(init_loc + 1, 227, 11, init_loc + 1))
+    DoActions([
+        SetMemoryEPD(loc_epd + 4, SetTo, loc_flags & 0xFFFF),
+        MoveLocation(init_loc + 1, 227, 11, init_loc + 1),
+    ])
 
     pID, humanArray = f_dwread_epd(EPD(0x57F1B0)), EUDArray(humans)
     IndexArray = EUDArray([QCNewIndex[n] for n in range(QCNum)])
@@ -444,7 +465,7 @@ def onPluginStart():
                 SetMemory(0x6509B0, Add, (0x4C - 0x34) // 4),
                 SetDeaths(CurrentPlayer, Subtract, QCPlayer - player, 0),  # modify unit's player
                 SetMemory(0x6509B0, Add, (0xDC - 0x4C) // 4),
-                SetDeaths(CurrentPlayer, Add, 0x4A00000, 0),  # invincible, stackable
+                SetDeaths(CurrentPlayer, Add, 0xA00000, 0),  # stackable
             ])
             f_bwrite_epd(epd + 0xA5 // 4, 1, 0)  # uniqueIdentifier
             QC_EPD[n + QCNum * p] = epd
@@ -454,13 +475,19 @@ def onPluginStart():
                 DoActions(SetMemory(IndexArray[n] + 20, SetTo, f_epd2newindex(epd)))
             EUDEndIf()
     DoActions([
-        MoveUnit(All, QCUnitID, QCPlayer, 64, init_loc + 1),
-        SetMemoryEPD(EPD(0x58DC60) + init_loc * 5 + 0, SetTo, loc[0]),
-        SetMemoryEPD(EPD(0x58DC60) + init_loc * 5 + 1, SetTo, loc[1]),
-        SetMemoryEPD(EPD(0x58DC60) + init_loc * 5 + 2, SetTo, loc[2]),
-        SetMemoryEPD(EPD(0x58DC60) + init_loc * 5 + 3, SetTo, loc[3]),
+        SetMemoryEPD(loc_epd + 0, SetTo, loc[0]),
+        SetMemoryEPD(loc_epd + 1, SetTo, loc[1]),
+        SetMemoryEPD(loc_epd + 2, SetTo, loc[2]),
+        SetMemoryEPD(loc_epd + 3, SetTo, loc[3]),
+        SetMemoryEPD(loc_epd + 4, SetTo, loc[4]),
         MoveLocation(init_loc + 1, 227, 11, init_loc + 1),
     ])
+    f_wwrite_epd(EPD(0x661518) + q2, 2*m2, 0)  # Editor Ability Flags
+    f_bwrite_epd(EPD(0x6637A0) + q, mod, 0)  # Group Flags
+
+
+def onPluginStart():
+    initQC()
 
 
 Select_NewIndex = Forward()
@@ -506,6 +533,18 @@ def getQC(num):
 
 
 def beforeTriggerExec():
+    if safety_option == 1:
+        CRITICAL_ERROR = "EUDSCOr()(" + ")(".join(
+            ["MemoryEPD(QC_EPD[{}] + 0xC // 4, Exactly, 0)".format(i) for i in range(QC_EPD.length)]) + ")()"
+        if EUDIf()(eval(CRITICAL_ERROR)):
+            if EUDPlayerLoop()():
+                DoActions(DisplayText("\x13\x08MSQC FATAL ERROR! QC Unit has been removed."))
+            EUDEndPlayerLoop()
+            for i in EUDLoopRange(QC_EPD.length):
+                f_dwwrite_epd(QC_EPD[i] + 0x110 // 4, 1)
+            initQC()
+        EUDEndIf()
+
     oldcp = f_getcurpl()
 
     VK_ARRAY = EPD(0x596A18)
