@@ -271,55 +271,55 @@ def onInit():
         elif key == 'QCPlayer':
             QCPlayer = EncPlayer(value.strip())
             continue
-        elif key == 'QC_SAFETY':
+        elif key.lower() == 'qc_safety':
             safety_option = int(V[0])
             continue
 
         ConCount = 0
-        if key == '마우스' or key.lower() == 'mouse':
-            if len(V) >= len(humans):
-                print('MouseMovelocation enabled: ',
-                      ['P{}:{}'.format(h + 1, V[i]) for i, h in enumerate(humans)])
-            else:
-                print('※ Error: Mouse following locations should be assigned as much as human players',
-                      'Mouse coordinates will send to death counter! (%s)' % (V[0]))
-            Con = 'MouseMoved(),'
-            Point = re.sub(r'(0[xX][0-9a-fA-F]+)', r'f_dwread_epd_safe(EPD(\1))',
-                           '0x62848C + 0x6CDDC4 + 65536 * (0x6284A8 + 0x6CDDC8) + 65537 * 64')
-        else:
-            conditions_ = [_.strip() for _ in key.split(';')]
-            for condition_ in conditions_:
-                if condition_.upper() in KeyCodeDict:  # KeyPressDetect
-                    VirtualKeyValue = KeyCodeDict[condition_.upper()]
-                    Con += '(VK[{}] == 1)'.format(VirtualKeyValue)
-                    ConCount += 1
-                    global VK, VK_USE, VK_EPD
-                    VK[VirtualKeyValue] = EUDVariable()
-                    VK_USE[VirtualKeyValue] = 1
-                    VK_EPD[VirtualKeyValue // 4] = 1
+        conditions_ = [_.strip() for _ in key.split(';')]
+        for condition_ in conditions_:
+            if condition_ == '마우스' or condition_.lower() == 'mouse':
+                if len(V) >= len(humans):
+                    print('MouseMovelocation enabled: ',
+                        ['P{}:{}'.format(h + 1, V[i]) for i, h in enumerate(humans)])
                 else:
-                    C = [_.strip() for _ in condition_.split(',')]
-                    if C[0].lower() == 'xy':
-                        try:
-                            Point = '%s + 65536 * (%s) + 65537 * 64' % (C[1], C[2])
-                        except IndexError:
-                            Point = '{} + 65537 * 64'.format(C[1])
-                        Point = re.sub(r'(0[xX][0-9a-fA-F]+)',
-                                       r'f_dwread_epd(EPD(\1))', Point)
-                    elif C[0].lower() == 'val':
-                        Point = 'val: {0} % 1000 + ({0}) // 1000 * 65536 + 65537 * 64'.format(C[1])
-                        Point = re.sub(r'(0[xX][0-9a-fA-F]+)',
-                                       r'f_dwread_epd(EPD(\1))', Point)
-                    elif re.match(r'0[xX][0-9a-fA-F]+', C[0]):
-                        try:
-                            Con += '(Memory(%s, %s, %s))' % (C[0], C[1], C[2])
-                        except IndexError:
-                            Con += '(f_dwread_epd(EPD(%s))&%s==%s)' % (
-                                C[0], C[1], C[1])
-                        ConCount += 1
-                    else:
-                        Con += '({})'.format(condition_)
-                        ConCount += 1
+                    print('※ Error: Mouse following locations should be assigned as much as human players',
+                        'Mouse coordinates will send to death counter! (%s)' % (V[0]))
+                Con += '(MouseMoved())'
+                ConCount += 1
+                Point = re.sub(r'(0[xX][0-9a-fA-F]+)', r'f_dwread_epd_safe(EPD(\1))',
+                            '0x62848C + 0x6CDDC4 + 65536 * (0x6284A8 + 0x6CDDC8) + 65537 * 64')
+            elif condition_.upper() in KeyCodeDict:  # KeyPressDetect
+                VirtualKeyValue = KeyCodeDict[condition_.upper()]
+                Con += '(VK[{}] == 1)'.format(VirtualKeyValue)
+                ConCount += 1
+                global VK, VK_USE, VK_EPD
+                VK[VirtualKeyValue] = EUDVariable()
+                VK_USE[VirtualKeyValue] = 1
+                VK_EPD[VirtualKeyValue // 4] = 1
+            else:
+                C = [_.strip() for _ in condition_.split(',')]
+                if C[0].lower() == 'xy':
+                    try:
+                        Point = '%s + 65536 * (%s) + 65537 * 64' % (C[1], C[2])
+                    except IndexError:
+                        Point = '{} + 65537 * 64'.format(C[1])
+                    Point = re.sub(r'(0[xX][0-9a-fA-F]+)',
+                                    r'f_dwread_epd(EPD(\1))', Point)
+                elif C[0].lower() == 'val':
+                    Point = 'val: {0} % 1000 + ({0}) // 1000 * 65536 + 65537 * 64'.format(C[1])
+                    Point = re.sub(r'(0[xX][0-9a-fA-F]+)',
+                                    r'f_dwread_epd(EPD(\1))', Point)
+                elif re.match(r'0[xX][0-9a-fA-F]+', C[0]):
+                    try:
+                        Con += '(Memory(%s, %s, %s))' % (C[0], C[1], C[2])
+                    except IndexError:
+                        Con += '(f_dwread_epd(EPD(%s))&%s==%s)' % (
+                            C[0], C[1], C[1])
+                    ConCount += 1
+                else:
+                    Con += '({})'.format(condition_)
+                    ConCount += 1
 
         if Con == '':
             Con = 'Always()'
@@ -443,6 +443,7 @@ def initQC():
         MoveLocation(init_loc + 1, 227, 11, init_loc + 1),
     ])
 
+    global humanArray
     pID, humanArray = f_dwread_epd(EPD(0x57F1B0)), EUDArray(humans)
     IndexArray = EUDArray([QCNewIndex[n] for n in range(QCNum)])
     for p in EUDLoopRange(len(humans)):
@@ -533,18 +534,39 @@ def getQC(num):
 
 
 def beforeTriggerExec():
+    DoActions([SetDeaths(human, SetTo, 0, unit)
+               for human in humans for unit in DeathUnits])
     if safety_option == 1:
-        CRITICAL_ERROR = "EUDSCOr()(" + ")(".join(
-            ["MemoryEPD(QC_EPD[{}] + 0xC // 4, Exactly, 0)".format(i) for i in range(QC_EPD.length)]) + ")()"
+        global ERROR_OCCURED, CRITICAL_ERROR
+        ERROR_OCCURED = EUDLightVariable()
+        global checkIndex, checkPlayer
+        checkIndex = EUDVariable()
+        checkPlayer = EUDVariable()
+        global check
+        check = QC_EPD[checkIndex]
+        CRITICAL_ERROR = ")(".join(
+            ["EUDSCOr("] + ["MemoryEPD(QC_EPD[{}] + 0xC // 4, Exactly, 0)".format(i) for i in range(QC_EPD.length)]
+            + ["f_bread_epd(check + 0x4C // 4, 0) != checkPlayer"] + [")"])
+        # ")(".join(
+        #     ["EUDSCOr("] + ["MemoryEPD(check + 0xC // 4, Exactly, 0)"]
+        #     + ["MemoryEPD(QC_EPD[{}] + 0x4C // 4, Exactly, 0x4000030B)".format(i) for i in range(QC_EPD.length)] + [")"])
         if EUDIf()(eval(CRITICAL_ERROR)):
+            ERROR_OCCURED << 1
             if EUDPlayerLoop()():
                 DoActions(DisplayText("\x13\x08MSQC FATAL ERROR! QC Unit has been removed."))
             EUDEndPlayerLoop()
             for i in EUDLoopRange(QC_EPD.length):
                 f_dwwrite_epd(QC_EPD[i] + 0x110 // 4, 1)
             initQC()
+        if EUDElse()():
+            ERROR_OCCURED << 0
+            b4()
         EUDEndIf()
+    else:
+        b4()
 
+
+def b4():
     oldcp = f_getcurpl()
 
     VK_ARRAY = EPD(0x596A18)
@@ -646,8 +668,6 @@ def beforeTriggerExec():
             QGCSwitch << 1
         EUDEndIf()
 
-    DoActions([SetDeaths(human, SetTo, 0, unit)
-               for human in humans for unit in DeathUnits])
     for p, player in enumerate(humans):
         for i, L in enumerate(VTrg):  # VTrg[n]: ('Point', Con, Ret)
             f_setcurpl(QC_EPD[i + QCNum * p] + 4)
@@ -672,6 +692,35 @@ def beforeTriggerExec():
 
 
 def afterTriggerExec():
+    if safety_option == 1:
+        if EUDIfNot()(
+            EUDSCOr()
+            (ERROR_OCCURED == 1)
+            (eval(CRITICAL_ERROR))
+            ()
+        ):
+            a4()
+        EUDEndIf()
+        checkCounter = EUDLightVariable()
+        DoActions([
+            checkIndex.AddNumber(1),
+            checkCounter.AddNumber(1),
+        ])
+        RawTrigger(
+            conditions=checkIndex.AtLeast(QC_EPD.length),
+            actions=checkIndex.SetNumber(0),
+        )
+        if EUDIf()(checkCounter.AtLeast(QCNum)):
+            DoActions([
+                checkCounter.SetNumber(0),
+                checkPlayer.SetNumber(humanArray[checkIndex // QCNum]),
+            ])
+        EUDEndIf()
+    else:
+        a4()
+
+
+def a4():
     # if QC unit's waypoint isn't (64, 64), it means at least 1 of conditions are fulfilled, so recover original unit selection and reset waypoints
     SelSwitch = EUDVariable()
     SelSwitch << 0
