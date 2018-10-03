@@ -15,16 +15,24 @@ customText 0.2.1
 0.1.0 initial release
 """
 
+def f_b2i(x):
+    return int.from_bytes(x, byteorder='little')
+
+
+chkt = GetChkTokenized()
+STR = chkt.getsection('STR')
+lenSTR2 = f_b2i(STR[6:8]) - 2 * f_b2i(STR[0:2])
+if lenSTR2 < 218:
+    print('''*경고* 현재 1번 스트링 길이: {}
+다른 스트링 덮어쓰기를 방지하려면
+맵 소개를 218자 이상으로 두는걸 권장합니다.'''.format(lenSTR2))
+
+
 setoldcp, setlocalcp = Forward(), Forward()
 ptr, epd, cp = EUDCreateVariables(3)
-Color = EUDArray([
-    Db(x) for x in (
-        b"\x08", b"\x0E", b"\x0F", b"\x10",
-        b"\x11", b"\x15", b"\x16", b"\x17",
-        b"\x18", b"\x19", b"\x1B", b"\x1C",
-        b"\x1D", b"\x1E", b"\x1F")
-])
-strBuffer = 1
+player_colors = "\x08\x0E\x0F\x10\x11\x15\x16\x17\x18\x19\x1B\x1C\x1D\x1E\x1F"
+Color = EUDArray([Db(u2b(x)) for x in player_colors])
+strBuffer = 2
 STR_ptr, STR_epd = EUDCreateVariables(2)
 AddSTR_ptr, AddSTR_epd, write_ptr, write_epd = [Forward() for i in range(4)]
 chatptr, chatepd = EUDCreateVariables(2)
@@ -139,8 +147,10 @@ class f_get:  # ptr/epd 중간 저장
         self._value = value
 
 
-def b2i(x):
-    return int.from_bytes(x, byteorder='little')
+def Name(x):
+    if isUnproxyInstance(x, type(P1)):
+        x = EncodePlayer(x)
+    return f_str(0x57EEEB + 36 * x)
 
 
 def f_cp949_print(dst, *args):
@@ -388,7 +398,7 @@ def f_addbyte_epd(dstp, b):
     while len(b) % 4 >= 1:
         b = b + b"\x0D"
     for i in range(len(b) // 4):
-        f_dwwrite_epd(dstp, b2i(b[4 * i:4 * (i + 1)]))
+        f_dwwrite_epd(dstp, f_b2i(b[4 * i:4 * (i + 1)]))
         dstp += 1
     return dstp
 
@@ -403,7 +413,7 @@ def f_add1c_epd(dstp, s, encoding='UTF-8'):
     color = ""
     for i, c in enumerate(s):
         c_ = c.encode(encoding)
-        ci = b2i(c_)
+        ci = f_b2i(c_)
         if (ci >= 0x01 and ci <= 0x1F and
                 ci != 0x12 and ci != 0x13):
             color = c
@@ -702,14 +712,6 @@ def f_setTbl(tblID, offset, length, *args):
     dst = f_tblptr(tblID) + offset
     f_dbstr_print2(dst, length, *args)
 
-
-chkt = GetChkTokenized()
-STR = chkt.getsection('STR')
-lenSTR2 = b2i(STR[6:8]) - 2 * b2i(STR[0:2])
-if lenSTR2 < 218:
-    print('''*경고* 현재 1번 스트링 길이: {}
-다른 스트링 덮어쓰기를 방지하려면
-맵 소개를 218자 이상으로 두는걸 권장합니다.'''.format(lenSTR2))
 
 # legacy
 colorArray = Color
