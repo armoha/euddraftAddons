@@ -191,7 +191,7 @@ def f_init():
     idmod = idlen % 4
 
     for n in range(2):
-        nmod = idmod + (n % 2) * 4
+        nmod = (idmod + 2 * n + 1) % 4
         _end = 0x640B63 + 218 * n + idlen
         trg_epd = EPD(trg[n])
         DoActions([
@@ -207,7 +207,7 @@ def f_init():
             SetMemory(act[3][n] + 16, SetTo, trg_epd + 87),  # act[2] + 20
             SetMemory(act[4][n] + 16, SetTo, trg_epd + 87),
             SetMemory(act[4][n] + 20, SetTo, _end)])
-        if EUDIf()(nmod <= 3):  # 1~2 vs 7,4 / 5~6 vs 3,0
+        if EUDIf()(nmod >= 2):  # 1~2 vs 7,4 / 5~6 vs 3,0
             DoActions([
                 [SetMemory(con[1 + t][n] + 12, SetTo, 0x17000000)
                  for t in range(4)],  # Never()
@@ -222,7 +222,7 @@ def f_init():
                 SetMemory(0x6509B0, Subtract, 95 - 4),  # con[0] + 8
                 SetMemory(cp[1][n] + 20, SetTo, 1),
                 SetMemory(cp[2][n] + 20, SetTo, 1)])
-            if EUDIf()(nmod % 2 == 0):
+            if EUDIf()(nmod == 3):
                 DoActions([
                     # SetMemory(con[0][n] + 8, SetTo, 0x073A0000 +
                     #           f_wread(idptr + idlen - 2)),
@@ -250,7 +250,7 @@ def f_init():
                 # SetMemory(act[0][n] + 20, SetTo, (0x2007 - 0x0720) * 0x100)
                 SetDeaths(CurrentPlayer, SetTo, (0x2007 - 0x0720) * 0x100, 0),
                 SetMemory(0x6509B0, Subtract, 95 - 4)])  # con[0] + 8])
-            if EUDIf()(nmod % 2 == 1):
+            if EUDIf()(nmod == 0):
                 DoActions([
                     [SetMemory(con[3 + t][n] + 12, SetTo, 0x16000000)
                      for t in range(2)],  # Always()
