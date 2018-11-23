@@ -1,0 +1,26 @@
+{
+    "files.exclude": {
+        "VERSION": true,
+        "**/*.dll": true,
+        "**/*.pyd": true,
+        "**/*.zip": true,
+        "lib/collections/": true,
+        "lib/ctypes/": true,
+        "lib/distutils/": true,
+        "lib/email/": true,
+        "lib/eudplib/": true,
+        "lib/encodings/": true,
+        "lib/freeze/": true,
+        "lib/html/": true,
+        "lib/http/": true,
+        "lib/importlib/": true,
+        "lib/json/": true,
+        "lib/logging/": true,
+        "lib/multiprocessing/": true,
+        "lib/pydoc_data/": true,
+        "lib/unittest/": true,
+        "lib/urllib/": true,
+        "lib/xml/": true,
+        "lib/xmlrpc/": true
+    }
+}
