@@ -4,7 +4,6 @@ import math
 import eudplib.eudlib.stringf.cputf8 as cputf
 from eudplib import *
 from eudplib.core.curpl import _curpl_var
-from eudplib.eudlib.memiof.modcurpl import _f_updatecpcache
 from eudplib.eudlib.stringf.rwcommon import br1, bw1
 
 
@@ -74,13 +73,13 @@ class CPString:
         self.valueAddr = list()
         actions = [
             [
-                SetDeaths(CurrentPlayer, SetTo, f_b2i(self.content[i:i + 4]), 0),
+                SetDeaths(CurrentPlayer, SetTo, f_b2i(self.content[i : i + 4]), 0),
                 SetMemory(CP, Add, 1),
             ]
             for i in range(0, len(self.content), 4)
         ]
         for i in range(0, len(actions), 64):
-            t = RawTrigger(actions=actions[i:i + 64])
+            t = RawTrigger(actions=actions[i : i + 64])
             self.trigger.append(t)
             self.valueAddr.extend(
                 [
@@ -414,7 +413,7 @@ def f_addptr_cp(number):
                 RawTrigger(
                     conditions=digit[j + 4 * (i // 16)].AtLeast(10),
                     actions=SetDeaths(
-                        CurrentPlayer, Add, (b"A"[0] - 10) * (256 ** j), 0
+                        CurrentPlayer, Add, (b"A"[0] - b":"[0]) * (256 ** j), 0
                     ),
                 )
             DoActions(
@@ -555,6 +554,7 @@ bufferepd = EUDVariable()
 
 def f_makeText(*args):
     _next = Forward()
+    f_getcurpl()
     RawTrigger(
         nextptr=bufferepd.GetVTable(),
         actions=[
@@ -567,19 +567,18 @@ def f_makeText(*args):
 
 
 def f_displayText():
+    f_setoldcp()
     DoActions(DisplayText(strBuffer))
 
 
 @EUDFunc
 def f_displayTextP(player):
-    _f_updatecpcache()
     DoActions([SetMemory(0x6509B0, SetTo, player), DisplayText(strBuffer)])
     f_setoldcp()
 
 
 @EUDFunc
 def f_displayTextAll():
-    _f_updatecpcache()
     f_setlocalcp()
     _next = Forward()
     RawTrigger(
@@ -595,7 +594,7 @@ def f_displayTextAll():
 
 def f_print(*args):
     f_makeText(*args)
-    DoActions(DisplayText(strBuffer))
+    f_displayText()
 
 
 def f_printP(player, *args):
@@ -630,14 +629,14 @@ def f_playSound(*args):
 
 
 def f_playSoundP(player, *args):
-    _f_updatecpcache()
+    f_getcurpl()
     DoActions(SetMemory(0x6509B0, SetTo, player))
     f_playSound(*args)
     f_setoldcp()
 
 
 def f_playSoundAll(*args):
-    _f_updatecpcache()
+    f_getcurpl()
     f_setlocalcp()
     f_playSound(*args)
     f_setoldcp()
