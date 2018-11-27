@@ -2,6 +2,14 @@
 VERSION
 *.exe
 *.txt
+*.zip
+
+# lib
+lib/eudplib
+lib/ctypes
+lib/distutils
+lib/email
+lib/pydoc_data
 
 # by trgk
 bgmplayer.py
@@ -26,7 +34,7 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+# lib/
 lib64/
 parts/
 sdist/
