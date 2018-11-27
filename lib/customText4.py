@@ -24,31 +24,36 @@ customText 0.3.0
 
 
 def f_b2i(x):
-    return int.from_bytes(x, byteorder='little')
+    return int.from_bytes(x, byteorder="little")
 
 
 CP = 0x6509B0
 chkt = GetChkTokenized()
-STR = chkt.getsection('STR')
+STR = chkt.getsection("STR")
 lenSTR2 = f_b2i(STR[6:8]) - 2 * f_b2i(STR[0:2])
 if lenSTR2 < 218:
-    print('''*경고* 현재 1번 스트링 길이: {}
+    print(
+        """*경고* 현재 1번 스트링 길이: {}
 다른 스트링 덮어쓰기를 방지하려면
-맵 소개를 218자 이상으로 두는걸 권장합니다.'''.format(lenSTR2))
+맵 소개를 218자 이상으로 두는걸 권장합니다.""".format(
+            lenSTR2
+        )
+    )
 
 
 def _s2b(x):
     if isinstance(x, str):
         x = u2utf8(x)
     if isinstance(x, bytes):
-        x = x + b'\r' * (-(-len(x) // 4) * 4 - len(x))
+        x = x + b"\r" * (-(-len(x) // 4) * 4 - len(x))
     return x
 
 
 class CPString:
-    '''
+    """
     store String in SetDeaths Actions, easy to concatenate
-    '''
+    """
+
     def __init__(self, content=None):
         """Constructor for CPString
         :param content: Initial CPString content / capacity. Capacity of
@@ -58,7 +63,7 @@ class CPString:
         :type content: str, bytes, int
         """
         if isinstance(content, int):
-            self.content = b'\r' * -(-content // 4) * 4
+            self.content = b"\r" * -(-content // 4) * 4
         elif isinstance(content, str) or isinstance(content, bytes):
             self.content = _s2b(content)
         else:
@@ -68,14 +73,21 @@ class CPString:
         self.trigger = list()
         self.valueAddr = list()
         actions = [
-            [SetDeaths(CurrentPlayer, SetTo, f_b2i(self.content[i:i + 4]), 0),
-             SetMemory(CP, Add, 1)]
+            [
+                SetDeaths(CurrentPlayer, SetTo, f_b2i(self.content[i:i + 4]), 0),
+                SetMemory(CP, Add, 1),
+            ]
             for i in range(0, len(self.content), 4)
         ]
         for i in range(0, len(actions), 64):
             t = RawTrigger(actions=actions[i:i + 64])
             self.trigger.append(t)
-            self.valueAddr.extend([t + (8 + 320 + 20) + 64 * k for k in range(min(32, (len(actions) - i) // 2))])
+            self.valueAddr.extend(
+                [
+                    t + (8 + 320 + 20) + 64 * k
+                    for k in range(min(32, (len(actions) - i) // 2))
+                ]
+            )
 
     def GetVTable(self):
         return self.trigger[0]
@@ -85,29 +97,37 @@ class CPString:
 
     def Assign(self, content):
         if isinstance(content, int):
-            content = b'\r' * -(-content // 4) * 4
+            content = b"\r" * -(-content // 4) * 4
         elif isinstance(content, str) or isinstance(content, bytes):
             content = _s2b(content)
         else:
             raise EPError("Unexpected type for CPString: {}".format(type(content)))
         ret = list()
         for i in range(0, len(content), 4):
-            ret.extend([
-                SetMemory(self.valueAddr[i // 4], SetTo, f_b2i(content[i:i + 4]), 0),
-                SetMemory(self.valueAddr[i // 4] + 4, SetTo, 0x072D0000, 0)
-            ])
+            ret.extend(
+                [
+                    SetMemory(
+                        self.valueAddr[i // 4], SetTo, f_b2i(content[i : i + 4]), 0
+                    ),
+                    SetMemory(self.valueAddr[i // 4] + 4, SetTo, 0x072D0000, 0),
+                ]
+            )
         if len(content) % (4 * 32) >= 1:
-            ret.append(SetMemory(self.valueAddr[len(content) // 4 - 1] + 68, SetTo, 0x07000000, 0))
+            ret.append(
+                SetMemory(
+                    self.valueAddr[len(content) // 4 - 1] + 68, SetTo, 0x07000000, 0
+                )
+            )
         self.content = content
         return ret
 
 
-class CPByteWriter():
+class CPByteWriter:
     """Write byte by byte"""
 
     def __init__(self):
         self._suboffset = EUDVariable()
-        self._b = [EUDLightVariable(f_b2i(b'\r')) for _ in range(4)]
+        self._b = [EUDLightVariable(f_b2i(b"\r")) for _ in range(4)]
 
     @EUDMethod
     def writebyte(self, byte):
@@ -124,10 +144,7 @@ class CPByteWriter():
         EUDSwitch(self._suboffset)
         for i in range(3):
             if EUDSwitchCase()(i):
-                DoActions([
-                    self._b[i].SetNumber(byte),
-                    self._suboffset.AddNumber(1)
-                ])
+                DoActions([self._b[i].SetNumber(byte), self._suboffset.AddNumber(1)])
                 EUDBreak()
 
         if EUDSwitchCase()(3):
@@ -145,19 +162,19 @@ class CPByteWriter():
         for i in range(7, -1, -1):
             for j in range(4):
                 RawTrigger(
-                    conditions=[
-                        self._b[j].AtLeast(2 ** i)
-                    ],
+                    conditions=[self._b[j].AtLeast(2 ** i)],
                     actions=[
                         self._b[j].SubtractNumber(2 ** i),
-                        SetDeaths(CurrentPlayer, Add, 2 ** (i + j * 8), 0)
-                    ]
+                        SetDeaths(CurrentPlayer, Add, 2 ** (i + j * 8), 0),
+                    ],
                 )
-        DoActions([
-            SetMemory(CP, Add, 1),
-            self._suboffset.SetNumber(0),
-            [self._b[i].SetNumber(f_b2i(b'\r')) for i in range(4)]
-        ])
+        DoActions(
+            [
+                SetMemory(CP, Add, 1),
+                self._suboffset.SetNumber(0),
+                [self._b[i].SetNumber(f_b2i(b"\r")) for i in range(4)],
+            ]
+        )
 
 
 cw = CPByteWriter()
@@ -165,9 +182,6 @@ ptr, epd, cp = EUDCreateVariables(3)
 player_colors = "\x08\x0E\x0F\x10\x11\x15\x16\x17\x18\x19\x1B\x1C\x1D\x1E\x1F"
 Color = EUDArray([EPD(Db(u2b(x))) for x in player_colors])
 strBuffer = 1
-STR_ptr, STR_epd = EUDCreateVariables(2)
-AddSTR_ptr, AddSTR_epd, write_ptr, write_epd = [Forward() for i in range(4)]
-chatptr, chatepd = EUDCreateVariables(2)
 
 
 def f_setoldcp():
@@ -176,8 +190,8 @@ def f_setoldcp():
         nextptr=_curpl_var.GetVTable(),
         actions=[
             SetNextPtr(_curpl_var.GetVTable(), _next),
-            _curpl_var.QueueAssignTo(EPD(CP))
-        ]
+            _curpl_var.QueueAssignTo(EPD(CP)),
+        ],
     )
     _next << NextTrigger()
 
@@ -186,10 +200,7 @@ def f_setlocalcp():
     _next = Forward()
     RawTrigger(
         nextptr=cp.GetVTable(),
-        actions=[
-            SetNextPtr(cp.GetVTable(), _next),
-            cp.QueueAssignTo(EPD(CP))
-        ]
+        actions=[SetNextPtr(cp.GetVTable(), _next), cp.QueueAssignTo(EPD(CP))],
     )
     _next << NextTrigger()
 
@@ -300,12 +311,16 @@ def Name(x):
 
 def f_addbyte_cp(b):
     while len(b) % 4 >= 1:
-        b = b + b'\x0D'
-    DoActions([
-        [[SetDeaths(CurrentPlayer, SetTo, f_b2i(b[i:i + 4]), 0),
-          SetMemory(CP, Add, 1)]
-         for i in range(0, len(b), 4)]
-    ])
+        b = b + b"\x0D"
+    DoActions(
+        [
+            [
+                SetDeaths(CurrentPlayer, SetTo, f_b2i(b[i : i + 4]), 0),
+                SetMemory(CP, Add, 1),
+            ]
+            for i in range(0, len(b), 4)
+        ]
+    )
     return len(b) // 4
 
 
@@ -362,7 +377,7 @@ def f_adddw_cp(number):
     for i in range(9, -1, -1):
         if i != 9:
             skipper[i] << NextTrigger()
-        cw.writebyte(ch[i] + b'0'[0])
+        cw.writebyte(ch[i] + b"0"[0])
 
     cw.flushdword()
 
@@ -374,10 +389,12 @@ def f_addptr_cp(number):
     :param number: DWORD to print
     """
     digit = [EUDLightVariable() for _ in range(8)]
-    DoActions([
-        [digit[i].SetNumber(0) for i in range(8)],
-        SetDeaths(CurrentPlayer, SetTo, f_b2i(b'0000'))
-    ])
+    DoActions(
+        [
+            [digit[i].SetNumber(0) for i in range(8)],
+            SetDeaths(CurrentPlayer, SetTo, f_b2i(b"0000"), 0),
+        ]
+    )
 
     def f(x):
         t = x % 16
@@ -385,24 +402,31 @@ def f_addptr_cp(number):
 
     for i in range(31, -1, -1):
         RawTrigger(
-            conditions=number.AtLeast(2**i),
+            conditions=number.AtLeast(2 ** i),
             actions=[
-                number.SubtractNumber(2**i),
-                digit[i // 4].AddNumber(2**(i % 4)),
-                SetDeaths(CurrentPlayer, Add, f(i), 0)
-            ]
+                number.SubtractNumber(2 ** i),
+                digit[i // 4].AddNumber(2 ** (i % 4)),
+                SetDeaths(CurrentPlayer, Add, f(i), 0),
+            ],
         )
         if i % 16 == 0:
             for j in range(4):
                 RawTrigger(
                     conditions=digit[j + 4 * (i // 16)].AtLeast(10),
-                    actions=SetDeaths(CurrentPlayer, Add, (b'A'[0] - 10) * (256 ** j), 0)
+                    actions=SetDeaths(
+                        CurrentPlayer, Add, (b"A"[0] - 10) * (256 ** j), 0
+                    ),
                 )
-            DoActions([
-                SetMemory(CP, Add, 1),
-                [SetDeaths(CurrentPlayer, SetTo, f_b2i(b'0000'))
-                 if i == 16 else []]
-            ])
+            DoActions(
+                [
+                    SetMemory(CP, Add, 1),
+                    [
+                        SetDeaths(CurrentPlayer, SetTo, f_b2i(b"0000"), 0)
+                        if i == 16
+                        else []
+                    ],
+                ]
+            )
 
 
 _constcpstr_dict = {}
@@ -431,7 +455,7 @@ def f_cpprint(*args):
             _next = Forward()
             RawTrigger(
                 nextptr=arg.GetVTable(),
-                actions=SetMemory(arg.GetNextPtrMemory(), SetTo, _next)
+                actions=SetMemory(arg.GetNextPtrMemory(), SetTo, _next),
             )
             _next << NextTrigger()
         elif isUnproxyInstance(arg, f_str):
@@ -443,15 +467,40 @@ def f_cpprint(*args):
         elif isUnproxyInstance(arg, EUDVariable) or IsConstExpr(arg):
             f_adddw_cp(arg)
         elif isUnproxyInstance(arg, hptr):
-            f_addptr_cp(dst, arg._value)
+            f_addptr_cp(arg._value)
             delta += 2
         else:
             raise EPError(
-                'Object with unknown parameter type %s given to f_cpprint.'
-                % type(arg)
+                "Object with unknown parameter type %s given to f_cpprint." % type(arg)
             )
     DoActions(SetDeaths(CurrentPlayer, SetTo, 0, 0))
     return delta
+
+
+@EUDFunc
+def f_dbstr_addstr_epd(dst, epd):
+    """Print string as string to dst. Same as strcpy except of return value.
+
+    :param dst: Destination address (Not EPD player)
+    :param epd: EPD player of Source address
+
+    :returns: dst + strlen(src)
+    """
+    b = EUDVariable()
+
+    br1.seekepd(epd)
+    bw1.seekoffset(dst)
+
+    if EUDInfLoop()():
+        SetVariables(b, br1.readbyte())
+        bw1.writebyte(b)
+        EUDBreakIf(b == 0)
+        dst += 1
+    EUDEndInfLoop()
+
+    bw1.flushdword()
+
+    return dst
 
 
 def f_cp949_print(dst, *args):
@@ -462,8 +511,8 @@ def f_cp949_print(dst, *args):
     for arg in args:
         if isUnproxyInstance(arg, f_str):
             dst = f_dbstr_addstr(dst, arg._value)
-        elif isUnproxyInstance(arg, f_color):
-            dst = f_dbstr_addstr(dst, Color[arg._value])
+        elif isUnproxyInstance(arg, f_strepd):
+            dst = f_dbstr_addstr_epd(dst, arg._value)
         elif isUnproxyInstance(arg, f_get):
             SetVariables(arg._value, dst)
         else:
@@ -480,7 +529,7 @@ def f_utf8_print(dst, *args):
         if isUnproxyInstance(arg, f_s2u):
             dst = f_cp949_to_utf8_cpy(dst, arg._value)
         elif isUnproxyInstance(arg, str):
-            dst = f_dbstr_addstr(dst, Db(u2utf8(arg) + b'\0'))
+            dst = f_dbstr_addstr(dst, Db(u2utf8(arg) + b"\0"))
         else:
             dst = f_cp949_print(dst, arg)
 
@@ -497,10 +546,6 @@ def f_sprintf(dst, *args):
     return ret
 
 
-def f_reset():
-    pass
-
-
 def f_addText(*args):
     f_cpprint(*args)
 
@@ -514,8 +559,8 @@ def f_makeText(*args):
         nextptr=bufferepd.GetVTable(),
         actions=[
             SetNextPtr(bufferepd.GetVTable(), _next),
-            bufferepd.QueueAssignTo(EPD(CP))
-        ]
+            bufferepd.QueueAssignTo(EPD(CP)),
+        ],
     )
     _next << NextTrigger()
     f_addText(*args)
@@ -528,10 +573,7 @@ def f_displayText():
 @EUDFunc
 def f_displayTextP(player):
     _f_updatecpcache()
-    DoActions([
-        SetMemory(0x6509B0, SetTo, player),
-        DisplayText(strBuffer)
-    ])
+    DoActions([SetMemory(0x6509B0, SetTo, player), DisplayText(strBuffer)])
     f_setoldcp()
 
 
@@ -545,8 +587,8 @@ def f_displayTextAll():
         actions=[
             SetNextPtr(_curpl_var.GetVTable(), _next),
             _curpl_var.QueueAssignTo(EPD(CP)),
-            DisplayText(strBuffer)
-        ]
+            DisplayText(strBuffer),
+        ],
     )
     _next << NextTrigger()
 
@@ -573,6 +615,7 @@ def _CGFW(exprf, retn):
         vals = exprf()
         for ret, val in zip(rets, vals):
             ret._value = val
+
     EUDOnStart(_)
     return rets
 
@@ -600,42 +643,65 @@ def f_playSoundAll(*args):
     f_setoldcp()
 
 
+STRptr, STRepd = EUDCreateVariables(2)
+add_STRptr, add_STRepd, write_bufferptr, write_bufferepd, reset_buffer = [
+    Forward() for _ in range(5)
+]
+
+
 @EUDFunc
 def f_strptr(strID):  # getStringPtr
     r, m = f_div(strID, 2)
-    RawTrigger(actions=AddSTR_epd << r.AddNumber(0))
+    RawTrigger(actions=add_STRepd << r.AddNumber(0))
     ret = f_wread_epd(r, m * 2)  # strTable_epd + r
-    RawTrigger(actions=AddSTR_ptr << ret.AddNumber(0))
+    RawTrigger(actions=add_STRptr << ret.AddNumber(0))
     EUDReturn(ret)  # strTable_ptr + strOffset
 
 
 def f_init():
-    SetVariables([STR_ptr, STR_epd],
-                 f_dwepdread_epd(EPD(0x5993D4)))
+    SetVariables([STRptr, STRepd], f_dwepdread_epd(EPD(0x5993D4)))
     localcp = f_dwread_epd(EPD(0x57F1B0))
-    DoActions([
-        cp.SetNumber(localcp),
-        SetMemory(AddSTR_ptr + 20, SetTo, STR_ptr),
-        SetMemory(AddSTR_epd + 20, SetTo, STR_epd),
-    ])
+    DoActions(
+        [
+            cp.SetNumber(localcp),
+            SetMemory(add_STRptr + 20, SetTo, STRptr),
+            SetMemory(add_STRepd + 20, SetTo, STRepd),
+        ]
+    )
     strmod = 4 - f_strptr(strBuffer) % 4
     if EUDIf()(strmod < 4):
-        string_offset = f_wread_epd(STR_epd + strBuffer // 2, strBuffer % 2)
-        f_wwrite_epd(STR_epd + strBuffer // 2, strBuffer % 2, string_offset + strmod)
+        string_offset = f_wread_epd(STRepd + strBuffer // 2, strBuffer % 2)
+        f_wwrite_epd(STRepd + strBuffer // 2, strBuffer % 2, string_offset + strmod)
     EUDEndIf()
-    DoActions([
-        SetMemory(write_ptr + 20, SetTo, f_strptr(strBuffer)),
-        SetMemory(write_epd + 20, SetTo, EPD(f_strptr(strBuffer))),
-        bufferepd.SetNumber(EPD(f_strptr(strBuffer))),
-        soundBufferptr.SetNumber(f_strptr(soundBuffer))
-    ])
+    DoActions(
+        [
+            SetMemory(write_bufferptr + 20, SetTo, f_strptr(strBuffer)),
+            SetMemory(write_bufferepd + 20, SetTo, EPD(f_strptr(strBuffer))),
+            bufferepd.SetNumber(EPD(f_strptr(strBuffer))),
+            soundBufferptr.SetNumber(f_strptr(soundBuffer)),
+        ]
+    )
     f_reset()  # prevent Forward Not initialized
-    if EUDIf()(Never()):
-        f_TBLinit()
-    EUDEndIf()
+    _never = Forward()
+    EUDJump(_never)
+    reset_buffer << RawTrigger(
+        actions=[
+            write_bufferptr << ptr.SetNumber(0),
+            write_bufferepd << epd.SetNumber(0),
+        ]
+    )
+    f_TBLinit()
+    _never << NextTrigger()
 
 
 EUDOnStart(f_init)
+chatptr, chatepd = EUDCreateVariables(2)
+
+
+def f_reset():  # ptr, epd를 스트링 시작 주소로 설정합니다.
+    _next = Forward()
+    RawTrigger(nextptr=reset_buffer, actions=SetNextPtr(reset_buffer, _next))
+    _next << NextTrigger()
 
 
 @EUDFunc
@@ -646,16 +712,19 @@ def f_printError(player):
     RawTrigger(actions=SetMemory(restorePtr + 20, SetTo, 0x59CCA8))
     for i in range(10, -1, -1):
         RawTrigger(
-            conditions=Memory(0x628438, AtLeast, 0x59CCA8 + 336 * 2**i),
+            conditions=Memory(0x628438, AtLeast, 0x59CCA8 + 336 * 2 ** i),
             actions=[
-                SetMemory(0x628438, Subtract, 336 * 2**i),
-                SetMemory(restorePtr + 20, Add, 336 * 2**i)
-            ])
-    DoActions([
-        SetMemory(0x628438, SetTo, 0),
-        CreateUnit(1, 0, 1, player),
-        restorePtr << SetMemory(0x628438, SetTo, 0)
-    ])
+                SetMemory(0x628438, Subtract, 336 * 2 ** i),
+                SetMemory(restorePtr + 20, Add, 336 * 2 ** i),
+            ],
+        )
+    DoActions(
+        [
+            SetMemory(0x628438, SetTo, 0),
+            CreateUnit(1, 0, 1, player),
+            restorePtr << SetMemory(0x628438, SetTo, 0),
+        ]
+    )
     _ret << NextTrigger()
 
 
@@ -727,24 +796,23 @@ def f_addbyte_epd(dstp, b):
     while len(b) % 4 >= 1:
         b = b + b"\x0D"
     for i in range(len(b) // 4):
-        f_dwwrite_epd(dstp, f_b2i(b[4 * i:4 * (i + 1)]))
+        f_dwwrite_epd(dstp, f_b2i(b[4 * i : 4 * (i + 1)]))
         dstp += 1
     return dstp
 
 
-def f_strbyte_epd(dstp, s, encoding='UTF-8'):
+def f_strbyte_epd(dstp, s, encoding="UTF-8"):
     b = s.encode(encoding)
     return f_addbyte_epd(dstp, b)
 
 
-def f_add1c_epd(dstp, s, encoding='UTF-8'):
+def f_add1c_epd(dstp, s, encoding="UTF-8"):
     string = ""
     color = ""
     for i, c in enumerate(s):
         c_ = c.encode(encoding)
         ci = f_b2i(c_)
-        if (ci >= 0x01 and ci <= 0x1F and
-                ci != 0x12 and ci != 0x13):
+        if ci >= 0x01 and ci <= 0x1F and ci != 0x12 and ci != 0x13:
             color = c
             if i - 1 == len(s):
                 string += color
@@ -776,7 +844,7 @@ def f_adddw_epd(dstp, number):
     for i in range(9, -1, -1):  # print digits
         if i != 9:
             skipper[i] << NextTrigger()
-        f_dwwrite_epd(dstp, ch[i] + b'0'[0] + 0xD0D0D00)
+        f_dwwrite_epd(dstp, ch[i] + b"0"[0] + 0xD0D0D00)
         dstp += 1
 
     return dstp
@@ -790,9 +858,9 @@ def f_addptr_epd(dstp, number):
 
     for i in range(7, -1, -1):
         if EUDIf()(ch[i] <= 9):
-            f_dwwrite_epd(dstp, ch[i] + b'0'[0] + 0xD0D0D00)
+            f_dwwrite_epd(dstp, ch[i] + b"0"[0] + 0xD0D0D00)
         if EUDElse()():
-            f_dwwrite_epd(dstp, ch[i] + (b'A'[0] - 10) + 0xD0D0D00)
+            f_dwwrite_epd(dstp, ch[i] + (b"A"[0] - 10) + 0xD0D0D00)
         EUDEndIf()
         dstp += 1
 
@@ -804,10 +872,6 @@ def f_cp949_print_epd(dstp, *args):
     for arg in args:
         if isUnproxyInstance(arg, f_str):
             dstp = f_addstr_epd(dstp, arg._value)
-        elif isUnproxyInstance(arg, f_color):
-            dstp = f_addstr_epd(dstp, Color[arg._value])
-        elif isUnproxyInstance(arg, f_1c):
-            dstp = f_add1c_epd(dstp, arg._value, encoding="cp949")
         elif isUnproxyInstance(arg, f_get):
             SetVariables(arg._value, dstp)
         elif isUnproxyInstance(arg, bytes):
@@ -817,14 +881,13 @@ def f_cp949_print_epd(dstp, *args):
         elif isUnproxyInstance(arg, DBString):
             dstp = f_addstr_epd(dstp, arg.GetStringMemoryAddr())
         elif isUnproxyInstance(arg, int):
-            dstp = f_addstr_epd(dstp, Db(u2b(str(arg & 0xFFFFFFFF)) + b'\0'))
+            dstp = f_addstr_epd(dstp, Db(u2b(str(arg & 0xFFFFFFFF)) + b"\0"))
         elif isUnproxyInstance(arg, EUDVariable) or IsConstExpr(arg):
             dstp = f_adddw_epd(dstp, arg)
         elif isUnproxyInstance(arg, hptr):
             dstp = f_addptr_epd(dstp, arg._value)
         else:
-            raise EPError('unknown parameter type %s given to print_epd.'
-                          % type(arg))
+            raise EPError("unknown parameter type %s given to print_epd." % type(arg))
     f_dwwrite_epd(dstp, 0)
     return dstp
 
@@ -858,9 +921,9 @@ def f_sprintf_epd(dstp, *args):
 def f_byteTest(s, e="UTF-8"):
     s = s.encode(e)
     while len(s) % 4 >= 1:
-        s += b'\x00'
+        s += b"\x00"
     for i in range(math.ceil(len(s) / 4)):
-        print("{}: {}".format(i, s[4 * i:min([4 * (i + 1), len(s)])]))
+        print("{}: {}".format(i, s[4 * i : min([4 * (i + 1), len(s)])]))
 
 
 def f_addText_epd(*args):
@@ -948,6 +1011,23 @@ def f_dbstr_addstr2(dst, src):
 
 
 @EUDFunc
+def f_dbstr_addstr2_epd(dst, epd):
+    b = EUDVariable()
+    br1.seekepd(epd)
+    bw1.seekoffset(dst)
+
+    if EUDInfLoop()():
+        SetVariables(b, br1.readbyte())
+        EUDBreakIf(b == 0)
+        bw1.writebyte(b)
+        dst += 1
+    EUDEndInfLoop()
+
+    bw1.flushdword()
+    return dst
+
+
+@EUDFunc
 def f_dbstr_adddw2(dst, number, length):
     bw1.seekoffset(dst)
     skipper = [Forward() for _ in range(9)]
@@ -962,7 +1042,7 @@ def f_dbstr_adddw2(dst, number, length):
     for i in range(9, -1, -1):  # print digits
         if i != 9:
             skipper[i] << NextTrigger()
-        bw1.writebyte(ch[i] + b'0'[0])
+        bw1.writebyte(ch[i] + b"0"[0])
         dst += 1
     bw1.flushdword()
     return dst
@@ -975,19 +1055,19 @@ def f_dbstr_print2(dst, length, *args):
     args = FlattenList(args)
     for arg in args:
         if isUnproxyInstance(arg, bytes):
-            dst = f_dbstr_addstr2(dst, Db(arg + b'\0'))
+            dst = f_dbstr_addstr2(dst, Db(arg + b"\0"))
         elif isUnproxyInstance(arg, str):
-            dst = f_dbstr_addstr2(dst, Db(u2b(arg) + b'\0'))
+            dst = f_dbstr_addstr2(dst, Db(u2b(arg) + b"\0"))
         elif isUnproxyInstance(arg, DBString):
             dst = f_dbstr_addstr2(dst, arg.GetStringMemoryAddr())
         elif isUnproxyInstance(arg, int):
-            dst = f_dbstr_addstr2(dst, Db(u2b(str(arg & 0xFFFFFFFF)) + b'\0'))
+            dst = f_dbstr_addstr2(dst, Db(u2b(str(arg & 0xFFFFFFFF)) + b"\0"))
         elif isUnproxyInstance(arg, EUDVariable) or IsConstExpr(arg):
             dst = f_dbstr_adddw2(dst, arg, length)
-        elif isUnproxyInstance(arg, f_color):
-            dst = f_dbstr_addstr2(dst, Color[arg._value])
         elif isUnproxyInstance(arg, f_str):
             dst = f_dbstr_addstr2(dst, arg._value)
+        elif isUnproxyInstance(arg, f_strepd):
+            dst = f_dbstr_addstr2_epd(dst, arg._value)
         else:
             dst = f_cp949_print(dst, arg)
 
@@ -997,7 +1077,7 @@ def f_dbstr_print2(dst, length, *args):
 TBL_ptr, TBL_epd = EUDCreateVariables(2)
 AddTBL_ptr, AddTBL_epd = Forward(), Forward()
 _initTbl = EUDLightVariable(0)
-_tbl_start, _tbl_end, _return_from_whence_thou_camst = Forward(), Forward(), Forward()
+_tbl_start, _tbl_end, _tbl_return = [Forward() for _ in range(3)]
 
 
 @EUDFunc
@@ -1011,18 +1091,17 @@ def f_tblptr(tblID):
 
 def f_TBLinit():
     _tbl_start << NextTrigger()
-    SetVariables([TBL_ptr, TBL_epd],
-                 f_dwepdread_epd(EPD(0x6D5A30)))
-    DoActions([
-        SetMemory(AddTBL_epd + 20, SetTo, TBL_epd),
-        SetMemory(AddTBL_ptr + 20, SetTo, TBL_ptr)])
+    SetVariables([TBL_ptr, TBL_epd], f_dwepdread_epd(EPD(0x6D5A30)))
+    DoActions(
+        [
+            SetMemory(AddTBL_epd + 20, SetTo, TBL_epd),
+            SetMemory(AddTBL_ptr + 20, SetTo, TBL_ptr),
+        ]
+    )
 
     f_tblptr(0)  # prevent Forward Not initialized
     _tbl_end << RawTrigger(
-        actions=[
-            _initTbl.SetNumber(1),
-            _return_from_whence_thou_camst << SetNextPtr(0xEDAC, 0xF001)
-        ]
+        actions=[_initTbl.SetNumber(1), _tbl_return << SetNextPtr(0xEDAC, 0xF001)]
     )
 
 
@@ -1033,9 +1112,9 @@ def f_setTbl(tblID, offset, length, *args):
         actions=[
             SetNextPtr(_is_tbl_init, _tbl_start),
             SetNextPtr(_tbl_end, _next),
-            SetMemory(_return_from_whence_thou_camst + 16, SetTo, EPD(_is_tbl_init + 4)),
-            SetMemory(_return_from_whence_thou_camst + 20, SetTo, _next)
-        ]
+            SetMemory(_tbl_return + 16, SetTo, EPD(_is_tbl_init + 4)),
+            SetMemory(_tbl_return + 20, SetTo, _next),
+        ],
     )
     _next << NextTrigger()
     dst = f_tblptr(tblID) + offset
