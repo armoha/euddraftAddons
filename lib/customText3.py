@@ -1,10 +1,15 @@
+# -*- coding: utf-8 -*-
+import math
+
+import eudplib.eudlib.stringf.cputf8 as cputf
 from eudplib import *
 from eudplib.eudlib.stringf.rwcommon import br1, bw1
-import eudplib.eudlib.stringf.cputf8 as cputf
-import math
+
+
 """
 customText 0.2.1
 
+0.2.2
 0.2.1 f_playSoundP, f_playSoundAll work properly.
 0.2.0 Add Legacy Support: chatAnnouncement + old function names.
     Add f_chatprintAll/_epd. Change f_chatprint: print for CurrentPlayer.
@@ -14,6 +19,10 @@ customText 0.2.1
 0.1.1 fix bug; ct.epd/ptr set to 0 in SC 1.16
 0.1.0 initial release
 """
+
+
+def f_b2i(x):
+    return int.from_bytes(x, byteorder='little')
 
 
 def _CGFW(exprf, retn):
@@ -27,15 +36,11 @@ def _CGFW(exprf, retn):
     return rets
 
 
+legacySupport = 0
 setoldcp, setlocalcp = Forward(), Forward()
 ptr, epd, cp, nmod = EUDCreateVariables(4)
-Color = EUDArray([
-    Db(x) for x in (
-        b"\x08", b"\x0E", b"\x0F", b"\x10",
-        b"\x11", b"\x15", b"\x16", b"\x17",
-        b"\x18", b"\x19", b"\x1B", b"\x1C",
-        b"\x1D", b"\x1E", b"\x1F")
-])
+player_colors = "\x08\x0E\x0F\x10\x11\x15\x16\x17\x18\x19\x1B\x1C\x1D\x1E\x1F"
+Color = EUDArray([Db(u2b(x)) for x in player_colors])
 strBuffer = _CGFW(lambda: [GetStringIndex("i" * 1308)], 1)[0]
 STR_ptr, STR_epd = EUDCreateVariables(2)
 AddSTR_ptr, AddSTR_epd, write_ptr, write_epd = [Forward() for i in range(4)]
@@ -67,13 +72,8 @@ def f_setlocalcp():
     DoActions(setlocalcp << SetMemory(0x6509B0, SetTo, 0))
 
 
-@EUDFunc
 def f_is116():
-    if EUDIf()(Memory(0x51CE84, AtMost, 99)):
-        EUDReturn(1)
-    if EUDElse()():
-        EUDReturn(0)
-    EUDEndIf()
+    return Memory(0x51CE84, AtMost, 99)
 
 
 def f_cp949_to_utf8_copy(dst, src, flag='ptr'):
@@ -136,9 +136,17 @@ class f_s2u:  # f_cp949_to_utf8_copy
         self._value = value
 
 
-class f_color:  # f_dbstr_addstr(Color[i])
-    def __init__(self, value):
-        self._value = value
+def p(x):
+    if isUnproxyInstance(x, type(P1)):
+        if x == CurrentPlayer:
+            x = f_getcurpl()
+        else:
+            x = EncodePlayer(x)
+    return x
+
+
+def f_color(x):  # f_dbstr_addstr(Color[x])
+    return f_str(Color[p(x)])
 
 
 class f_1c:  # _epd함수에서 1글자씩 쓰기
@@ -151,8 +159,17 @@ class f_get:  # ptr/epd 중간 저장
         self._value = value
 
 
-def f_b2i(x):
-    return int.from_bytes(x, byteorder='little')
+def Name(x):
+    return f_str(0x57EEEB + 36 * p(x))
+
+
+def process_bytes(s):
+    while len(s) % 4 == 0:
+        s += b'\x0D'
+    DoActions([[
+        SetDeaths(CurrentPlayer, SetTo, f_b2i(s[i:i+4]), 0),
+        SetMemory(0x6509B0, Add, 1),
+    ] for i in range(0, len(s), 4)])
 
 
 def f_cp949_print(dst, *args):
@@ -163,8 +180,6 @@ def f_cp949_print(dst, *args):
     for arg in args:
         if isUnproxyInstance(arg, f_str) or isUnproxyInstance(arg, f_s2u):
             dst = f_dbstr_addstr(dst, arg._value)
-        elif isUnproxyInstance(arg, f_color):
-            dst = f_dbstr_addstr(dst, Color[arg._value])
         elif isUnproxyInstance(arg, f_get):
             SetVariables(arg._value, dst)
         else:
@@ -482,8 +497,6 @@ def f_cp949_print_epd(dstp, *args):
     for arg in args:
         if isUnproxyInstance(arg, f_str) or isUnproxyInstance(arg, f_s2u):
             dstp = f_addstr_epd(dstp, arg._value)
-        elif isUnproxyInstance(arg, f_color):
-            dstp = f_addstr_epd(dstp, Color[arg._value])
         elif isUnproxyInstance(arg, f_1c):
             dstp = f_add1c_epd(dstp, arg._value, encoding="cp949")
         elif isUnproxyInstance(arg, f_get):
@@ -663,8 +676,6 @@ def f_dbstr_print2(dst, length, *args):
             dst = f_dbstr_addstr2(dst, Db(u2b(str(arg & 0xFFFFFFFF)) + b'\0'))
         elif isUnproxyInstance(arg, EUDVariable) or IsConstExpr(arg):
             dst = f_dbstr_adddw2(dst, arg, length)
-        elif isUnproxyInstance(arg, f_color):
-            dst = f_dbstr_addstr2(dst, Color[arg._value])
         elif isUnproxyInstance(arg, f_str):
             dst = f_dbstr_addstr2(dst, arg._value)
         else:
@@ -736,3 +747,8 @@ def f_chatAnnouncement(*args):
 
 def f_chatAnnouncement_epd(*args):
     f_chatprint_epd(12, *args)
+
+
+def f_legacySupport():
+    global legacySupport
+    legacySupport = 1
