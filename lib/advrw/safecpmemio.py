@@ -1,8 +1,6 @@
-from eudplib import (
-    core as c,
-    ctrlstru as cs,
-    utils as ut,
-)
+from eudplib import core as c
+from eudplib import ctrlstru as cs
+from eudplib import utils as ut
 
 # https://github.com/phu54321/eudplib/blob/develop/eudplib/eudlib/memiof/safedwmemio.py
 
@@ -19,12 +17,8 @@ def _cpreader():
 
     cmptrigger = c.Forward()
     cmptrigger << c.RawTrigger(
-        conditions=[
-            cmpc << c.Deaths(c.CurrentPlayer, c.AtMost, 0, 0)
-        ],
-        actions=[
-            cmpact << c.SetMemory(cmptrigger + 4, c.SetTo, 0)
-        ]
+        conditions=[cmpc << c.Deaths(c.CurrentPlayer, c.AtMost, 0, 0)],
+        actions=[cmpact << c.SetMemory(cmptrigger + 4, c.SetTo, 0)],
     )
     cmpact_ontrueaddr = cmpact + 20
     c.PopTriggerScope()
@@ -34,11 +28,13 @@ def _cpreader():
     chain2 = [c.Forward() for _ in range(32)]
 
     # Main logic start
-    c.SeqCompute([
-        (ut.EPD(cmp_number), c.SetTo, 0xFFFFFFFF),
-        (ret, c.SetTo, 0xFFFFFFFF),
-        (retepd, c.SetTo, ut.EPD(0) + 0x3FFFFFFF)
-    ])
+    c.SeqCompute(
+        [
+            (ut.EPD(cmp_number), c.SetTo, 0xFFFFFFFF),
+            (ret, c.SetTo, 0xFFFFFFFF),
+            (retepd, c.SetTo, ut.EPD(0) + 0x3FFFFFFF),
+        ]
+    )
 
     readend = c.Forward()
 
@@ -58,14 +54,13 @@ def _cpreader():
                 c.SetNextPtr(cmptrigger, chain2[i]),
                 c.SetMemory(cmpact_ontrueaddr, c.SetTo, nextchain),
                 ret.SubtractNumber(2 ** i),
-            ] + epdsubact
+            ]
+            + epdsubact,
         )
 
         chain2[i] << c.RawTrigger(
-            actions=[
-                c.SetMemory(cmp_number, c.Add, 2 ** i),
-                ret.AddNumber(2 ** i),
-            ] + epdaddact
+            actions=[c.SetMemory(cmp_number, c.Add, 2 ** i), ret.AddNumber(2 ** i)]
+            + epdaddact
         )
 
     readend << c.NextTrigger()

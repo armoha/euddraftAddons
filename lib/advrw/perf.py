@@ -1,18 +1,12 @@
-from eudplib.eudlib.memiof import (
-    dwepdio as dwm,
-    cpmemio as cpm,
-    byterw as brw,
-    modcurpl as cp,
-)
-from eudplib import (
-    core as c,
-    ctrlstru as cs,
-    utils as ut,
-)
-from bwcpio import (
-    f_bread_cp
-)
+from eudplib import core as c
+from eudplib import ctrlstru as cs
+from eudplib import utils as ut
+from eudplib.eudlib.memiof import byterw as brw
+from eudplib.eudlib.memiof import cpmemio as cpm
+from eudplib.eudlib.memiof import dwepdio as dwm
+from eudplib.eudlib.memiof import modcurpl as cp
 
+from advrw.bwcpio import f_bread_cp
 
 
 @c.EUDFunc
@@ -21,24 +15,24 @@ def f_dwepdread_epd(targetplayer):
     ptr, epd = c.EUDVariable(), c.EUDVariable()
     cpaddact = c.Forward()
     cpaddact_number = cpaddact + 20
-    cs.DoActions([
-        ptr.SetNumber(0),
-        epd.SetNumber(ut.EPD(0)),
-        c.SetCurrentPlayer(targetplayer),
-        c.SetMemory(cpaddact_number, c.SetTo, 0),
-    ])
+    cs.DoActions(
+        [
+            ptr.SetNumber(0),
+            epd.SetNumber(ut.EPD(0)),
+            c.SetCurrentPlayer(targetplayer),
+            c.SetMemory(cpaddact_number, c.SetTo, 0),
+        ]
+    )
 
     for i in range(31, -1, -1):
         c.RawTrigger(
-            conditions=[
-                c.Deaths(c.CurrentPlayer, c.AtLeast, 2**i, 0)
-            ],
+            conditions=[c.Deaths(c.CurrentPlayer, c.AtLeast, 2 ** i, 0)],
             actions=[
-                c.SetDeaths(c.CurrentPlayer, c.Subtract, 2**i, 0),
+                c.SetDeaths(c.CurrentPlayer, c.Subtract, 2 ** i, 0),
                 ptr.AddNumber(2 ** i),
                 c.SetMemory(cpaddact_number, c.Add, 2 ** i),
-                epd.AddNumber(2 ** (i - 2)) if i >= 2 else []
-            ]
+                epd.AddNumber(2 ** (i - 2)) if i >= 2 else [],
+            ],
         )
 
     c.RawTrigger(actions=[cpaddact << c.SetDeaths(c.CurrentPlayer, c.Add, 0xEDAC, 0)])
@@ -53,21 +47,21 @@ def f_dwread_epd(targetplayer):
     ptr = c.EUDVariable()
     cpaddact = c.Forward()
     cpaddact_number = cpaddact + 20
-    cs.DoActions([
-        ptr.SetNumber(0),
-        c.SetCurrentPlayer(targetplayer),
-        c.SetMemory(cpaddact_number, c.SetTo, 0),
-    ])
+    cs.DoActions(
+        [
+            ptr.SetNumber(0),
+            c.SetCurrentPlayer(targetplayer),
+            c.SetMemory(cpaddact_number, c.SetTo, 0),
+        ]
+    )
     for i in range(31, -1, -1):
         c.RawTrigger(
-            conditions=[
-                c.Deaths(c.CurrentPlayer, c.AtLeast, 2**i, 0)
-            ],
+            conditions=[c.Deaths(c.CurrentPlayer, c.AtLeast, 2 ** i, 0)],
             actions=[
-                c.SetDeaths(c.CurrentPlayer, c.Subtract, 2**i, 0),
+                c.SetDeaths(c.CurrentPlayer, c.Subtract, 2 ** i, 0),
                 ptr.AddNumber(2 ** i),
                 c.SetMemory(cpaddact_number, c.Add, 2 ** i),
-            ]
+            ],
         )
 
     c.RawTrigger(actions=[cpaddact << c.SetDeaths(c.CurrentPlayer, c.Add, 0xEDAC, 0)])
@@ -86,32 +80,34 @@ def f_wread_epd(epd, subp):
     w = c.EUDVariable()
     cpaddact = c.Forward()
     cpaddact_number = cpaddact + 20
-    cs.DoActions([
-        c.SetMemory(0x6509B0, c.SetTo, epd),
-        w.SetNumber(0),
-        c.SetMemory(cpaddact_number, c.SetTo, 0),
-    ])
+    cs.DoActions(
+        [
+            c.SetMemory(0x6509B0, c.SetTo, epd),
+            w.SetNumber(0),
+            c.SetMemory(cpaddact_number, c.SetTo, 0),
+        ]
+    )
     cs.EUDSwitch(subp)
     for i in range(3):
         cs.EUDSwitchCase()(i)
         for j in range(31, -1, -1):
             if 8 * i <= j < 8 * (i + 2):
                 c.RawTrigger(
-                    conditions=c.Deaths(c.CurrentPlayer, c.AtLeast, 2**j, 0),
+                    conditions=c.Deaths(c.CurrentPlayer, c.AtLeast, 2 ** j, 0),
                     actions=[
-                        c.SetDeaths(c.CurrentPlayer, c.Subtract, 2**j, 0),
-                        c.SetMemory(cpaddact_number, c.Add, 2**j),
-                        w.AddNumber(2**(j - 8 * i))
-                    ]
+                        c.SetDeaths(c.CurrentPlayer, c.Subtract, 2 ** j, 0),
+                        c.SetMemory(cpaddact_number, c.Add, 2 ** j),
+                        w.AddNumber(2 ** (j - 8 * i)),
+                    ],
                 )
 
             else:
                 c.RawTrigger(
-                    conditions=c.Deaths(c.CurrentPlayer, c.AtLeast, 2**j, 0),
+                    conditions=c.Deaths(c.CurrentPlayer, c.AtLeast, 2 ** j, 0),
                     actions=[
-                        c.SetDeaths(c.CurrentPlayer, c.Subtract, 2**j, 0),
-                        c.SetMemory(cpaddact_number, c.Add, 2**j),
-                    ]
+                        c.SetDeaths(c.CurrentPlayer, c.Subtract, 2 ** j, 0),
+                        c.SetMemory(cpaddact_number, c.Add, 2 ** j),
+                    ],
                 )
 
             if j == 8 * i:
@@ -136,32 +132,34 @@ def f_bread_epd(epd, subp):
     b = c.EUDVariable()
     cpaddact = c.Forward()
     cpaddact_number = cpaddact + 20
-    cs.DoActions([
-        c.SetCurrentPlayer(epd),
-        b.SetNumber(0),
-        c.SetMemory(cpaddact_number, c.SetTo, 0),
-    ])
+    cs.DoActions(
+        [
+            c.SetCurrentPlayer(epd),
+            b.SetNumber(0),
+            c.SetMemory(cpaddact_number, c.SetTo, 0),
+        ]
+    )
     cs.EUDSwitch(subp)
     for i in range(4):
         cs.EUDSwitchCase()(i)
         for j in range(31, -1, -1):
             if 8 * i <= j < 8 * (i + 1):
                 c.RawTrigger(
-                    conditions=c.Deaths(c.CurrentPlayer, c.AtLeast, 2**j, 0),
+                    conditions=c.Deaths(c.CurrentPlayer, c.AtLeast, 2 ** j, 0),
                     actions=[
-                        c.SetDeaths(c.CurrentPlayer, c.Subtract, 2**j, 0),
-                        c.SetMemory(cpaddact_number, c.Add, 2**j),
-                        b.AddNumber(2**(j - 8 * i))
-                    ]
+                        c.SetDeaths(c.CurrentPlayer, c.Subtract, 2 ** j, 0),
+                        c.SetMemory(cpaddact_number, c.Add, 2 ** j),
+                        b.AddNumber(2 ** (j - 8 * i)),
+                    ],
                 )
 
             else:
                 c.RawTrigger(
-                    conditions=c.Deaths(c.CurrentPlayer, c.AtLeast, 2**j, 0),
+                    conditions=c.Deaths(c.CurrentPlayer, c.AtLeast, 2 ** j, 0),
                     actions=[
-                        c.SetDeaths(c.CurrentPlayer, c.Subtract, 2**j, 0),
-                        c.SetMemory(cpaddact_number, c.Add, 2**j),
-                    ]
+                        c.SetDeaths(c.CurrentPlayer, c.Subtract, 2 ** j, 0),
+                        c.SetMemory(cpaddact_number, c.Add, 2 ** j),
+                    ],
                 )
 
             if j == 8 * i:
