@@ -8,8 +8,9 @@ from eudplib.eudlib.stringf.rwcommon import br1, bw1
 
 
 """
-customText 0.3.0
+customText 0.3.2
 
+0.3.2 ll
 0.3.1 fix hptr, cpcache
 0.3.0 Add CPString, f_cpprint
 0.2.1 f_playSoundP, f_playSoundAll work properly.
@@ -288,6 +289,11 @@ class f_s2u:  # f_cp949_to_utf8_cpy
 
 
 class f_get:  # get ptr/epd in middle of string
+    def __init__(self, value):
+        self._value = value
+
+
+class f_1c:
     def __init__(self, value):
         self._value = value
 
