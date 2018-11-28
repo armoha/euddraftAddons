@@ -10,6 +10,7 @@ from eudplib.eudlib.stringf.rwcommon import br1, bw1
 """
 customText 0.3.0
 
+0.3.1 fix hptr, cpcache
 0.3.0 Add CPString, f_cpprint
 0.2.1 f_playSoundP, f_playSoundAll work properly.
 0.2.0 Add Legacy Support: chatAnnouncement + old function names.
