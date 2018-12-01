@@ -563,3 +563,7 @@ class SoundLooper:
 	def cond(cls, loop, cmptype, value):
 		loop = T2i(loop)
 		return MemoryEPD(EPD(SoundLooper.bars) + loop, cmptype, value)
+
+	def loopis(self, loop):
+		loop = T2i(loop)
+		return self.current_loop.Exactly(loop)
