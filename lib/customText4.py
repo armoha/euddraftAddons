@@ -484,7 +484,7 @@ def f_cpprint(*args):
 
 
 @EUDFunc
-def f_dbstr_addstr_epd(dst, epd):
+def f_addstr_epd(dst, epd):
     """Print string as string to dst. Same as strcpy except of return value.
 
     :param dst: Destination address (Not EPD player)
@@ -518,7 +518,7 @@ def f_cp949_print(dst, *args):
         if isUnproxyInstance(arg, f_str):
             dst = f_dbstr_addstr(dst, arg._value)
         elif isUnproxyInstance(arg, f_strepd):
-            dst = f_dbstr_addstr_epd(dst, arg._value)
+            dst = f_addstr_epd(dst, arg._value)
         elif isUnproxyInstance(arg, f_get):
             SetVariables(arg._value, dst)
         else:
@@ -706,28 +706,40 @@ def f_reset():  # ptr, epd를 스트링 시작 주소로 설정합니다.
     _next << NextTrigger()
 
 
+NEXT_PTR = 0x628438
+_restorePtr = Forward()
+_nextptrcacheMatchCond = Forward()
+
+
 @EUDFunc
-def f_printError(player):
-    _ret = Forward()
-    EUDJumpIf(Memory(0x628438, Exactly, 0), _ret)
-    restorePtr = Forward()
-    RawTrigger(actions=SetMemory(restorePtr + 20, SetTo, 0x59CCA8))
+def _updatenextptrcache():
+    DoActions([
+        SetMemory(_restorePtr + 20, SetTo, 0x59CCA8),
+        SetMemory(_nextptrcacheMatchCond + 8, SetTo, 0x59CCA8)
+    ])
     for i in range(10, -1, -1):
         RawTrigger(
-            conditions=Memory(0x628438, AtLeast, 0x59CCA8 + 336 * 2 ** i),
+            conditions=Memory(NEXT_PTR, AtLeast, 0x59CCA8 + 336 * 2 ** i),
             actions=[
-                SetMemory(0x628438, Subtract, 336 * 2 ** i),
-                SetMemory(restorePtr + 20, Add, 336 * 2 ** i),
+                SetMemory(NEXT_PTR, Subtract, 336 * 2 ** i),
+                SetMemory(_restorePtr + 20, Add, 336 * 2 ** i),
+                SetMemory(_nextptrcacheMatchCond + 8, Add, 336 * 2 ** i),
             ],
         )
+
+
+@EUDTypedFunc([TrgPlayer])
+def f_printError(player):
+    if EUDIfNot()([_nextptrcacheMatchCond << Memory(NEXT_PTR, Exactly, 0)]):
+        _updatenextptrcache()
+    EUDEndIf()
     DoActions(
         [
-            SetMemory(0x628438, SetTo, 0),
+            SetMemory(NEXT_PTR, SetTo, 0),
             CreateUnit(1, 0, 1, player),
-            restorePtr << SetMemory(0x628438, SetTo, 0),
+            _restorePtr << SetMemory(NEXT_PTR, SetTo, 0),
         ]
     )
-    _ret << NextTrigger()
 
 
 @EUDFunc
