@@ -340,19 +340,6 @@ def calculate_error():
 	EUDReturn((493 - 7 * x) // 41)
 
 
-def _fgen(a, _fdict={}):
-	if a in _fdict:
-		_f = _fdict[a]
-	else:
-		@EUDFunc
-		def _f(dst, src):
-			a[dst] = a[src]
-		
-		_fdict[a] = _f
-
-	return _f
-
-
 class SoundLooper:
 	bars = EUDArray(len(loop_dict))
 
@@ -528,5 +515,21 @@ class SoundLooper:
 		EUDEndIf()
 
 	@classmethod
-	def sendbar(cls, dst, src):
-		_fgen(SoundLooper.bars)(T2i(dst), T2i(src))
+	def sendbar(cls, dst, src, _fdict={}):
+		dst, src = T2i(dst), T2i(src)
+
+		if SoundLooper.bars in _fdict:
+			_f = _fdict[SoundLooper.bars]
+		else:
+			@EUDFunc
+			def _f(dst, src):
+				SoundLooper.bars[dst] = SoundLooper.bars[src]
+			
+			_fdict[SoundLooper.bars] = _f
+
+		_f(dst, src)
+
+	@classmethod
+	def setloopbar(cls, loop, bar):
+		loop = T2i(loop)
+		return SetMemory(SoundLooper.bars + 4 * loop, SetTo, bar)
