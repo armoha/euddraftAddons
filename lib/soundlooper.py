@@ -532,4 +532,9 @@ class SoundLooper:
 	@classmethod
 	def setloopbar(cls, loop, bar):
 		loop = T2i(loop)
-		return SetMemory(SoundLooper.bars + 4 * loop, SetTo, bar)
+		return SetMemoryEPD(EPD(SoundLooper.bars) + loop, SetTo, bar)
+
+	@classmethod
+	def cond(cls, loop, cmptype, value):
+		loop = T2i(loop)
+		return MemoryEPD(EPD(SoundLooper.bars) + loop, cmptype, value)
