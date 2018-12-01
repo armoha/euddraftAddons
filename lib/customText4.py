@@ -10,7 +10,7 @@ from eudplib.eudlib.stringf.rwcommon import br1, bw1
 """
 customText 0.3.2
 
-0.3.2 ll
+0.3.2 clean f_init
 0.3.1 fix hptr, cpcache
 0.3.0 Add CPString, f_cpprint
 0.2.1 f_playSoundP, f_playSoundAll work properly.
@@ -31,7 +31,7 @@ def f_b2i(x):
 CP = 0x6509B0
 chkt = GetChkTokenized()
 STR = chkt.getsection("STR")
-lenSTR2 = f_b2i(STR[6:8]) - 2 * f_b2i(STR[0:2])
+lenSTR2 = b2i2(STR[6:8]) - 2 * b2i2(STR[0:2])
 if lenSTR2 < 218:
     print(
         """*경고* 현재 1번 스트링 길이: {}
@@ -185,7 +185,7 @@ Color = EUDArray([EPD(Db(u2b(x))) for x in player_colors])
 strBuffer = 1
 
 
-def f_setoldcp():
+def f_setcachedcp():
     _next = Forward()
     RawTrigger(
         nextptr=_curpl_var.GetVTable(),
@@ -574,14 +574,14 @@ def f_makeText(*args):
 
 
 def f_displayText():
-    f_setoldcp()
+    f_setcachedcp()
     DoActions(DisplayText(strBuffer))
 
 
 @EUDFunc
 def f_displayTextP(player):
     DoActions([SetMemory(0x6509B0, SetTo, player), DisplayText(strBuffer)])
-    f_setoldcp()
+    f_setcachedcp()
 
 
 @EUDFunc
@@ -639,14 +639,14 @@ def f_playSoundP(player, *args):
     f_getcurpl()
     DoActions(SetMemory(0x6509B0, SetTo, player))
     f_playSound(*args)
-    f_setoldcp()
+    f_setcachedcp()
 
 
 def f_playSoundAll(*args):
     f_getcurpl()
     f_setlocalcp()
     f_playSound(*args)
-    f_setoldcp()
+    f_setcachedcp()
 
 
 STRptr, STRepd = EUDCreateVariables(2)
@@ -666,25 +666,21 @@ def f_strptr(strID):  # getStringPtr
 
 def f_init():
     SetVariables([STRptr, STRepd], f_dwepdread_epd(EPD(0x5993D4)))
-    localcp = f_dwread_epd(EPD(0x57F1B0))
     DoActions(
         [
-            cp.SetNumber(localcp),
+            cp.SetNumber(f_dwread_epd(EPD(0x57F1B0))),
             SetMemory(add_STRptr + 20, SetTo, STRptr),
             SetMemory(add_STRepd + 20, SetTo, STRepd),
         ]
     )
-    strmod = 4 - f_strptr(strBuffer) % 4
-    if EUDIf()(strmod < 4):
-        string_offset = f_wread_epd(STRepd + strBuffer // 2, strBuffer % 2)
-        f_wwrite_epd(STRepd + strBuffer // 2, strBuffer % 2, string_offset + strmod)
-    EUDEndIf()
+    newptr = f_strptr(1)  # STRptr + newptr
+    newepd = EPD(newptr)
     DoActions(
         [
-            SetMemory(write_bufferptr + 20, SetTo, f_strptr(strBuffer)),
-            SetMemory(write_bufferepd + 20, SetTo, EPD(f_strptr(strBuffer))),
-            bufferepd.SetNumber(EPD(f_strptr(strBuffer))),
-            soundBufferptr.SetNumber(f_strptr(soundBuffer)),
+            SetMemory(write_bufferptr + 20, SetTo, newptr),
+            SetMemory(write_bufferepd + 20, SetTo, newepd),
+            bufferepd.SetNumber(newepd),
+            soundBufferptr.SetNumber(newptr),
         ]
     )
     f_reset()  # prevent Forward Not initialized
