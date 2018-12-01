@@ -231,6 +231,7 @@ path = ""
 loop_dict = dict()
 INV_SYS_TIME = 0x51CE8C
 CP = 0x6509B0
+_index = 0
 
 
 def id_generator():
@@ -240,7 +241,7 @@ def id_generator():
 
 
 class Loop:
-	def __init__(self, index, identifier, count, intro, length, bridge, goto):
+	def __init__(self, index, identifier, count, intro, length, bridge, goto=1):
 		self.index = index
 		self.identifier = identifier
 		self.bar_count = count
@@ -258,8 +259,6 @@ def SetPath(new_path):
 def AddLoop(filename, goto=1):
 	intro_length, bar_length, bridge_length = 0, 0, 0
 	identifier = id_generator()
-	if not hasattr(AddLoop, "index"):
-		AddLoop.index = 0
 	for i in range(101):
 		file_path = path + "/{0}/{0}{1:02d}.ogg".format(filename, i)
 		try:
@@ -267,8 +266,9 @@ def AddLoop(filename, goto=1):
 		except FileNotFoundError:
 			if i == 0:
 				continue
+			global _index
 			loop_dict[filename] = Loop(
-				AddLoop.index,
+				_index,
 				identifier,
 				i - 1,
 				intro_length,
@@ -276,7 +276,7 @@ def AddLoop(filename, goto=1):
 				bridge_length,
 				goto,
 			)
-			AddLoop.index += 1
+			_index += 1
 			print(
 				u"{}{:02d}.ogg: {} ||: {} | {} :||".format(
 					filename, i - 1, intro_length, bar_length, bridge_length
@@ -291,6 +291,22 @@ def AddLoop(filename, goto=1):
 				bar_length = round(tag.duration, 3)
 			bridge_length = round(tag.duration, 3)
 			MPQAddFile("{}{:02d}".format(identifier, i), content)
+
+
+def ManualAddLoop(filename, count, intro, length, bridge, goto=1):
+	global _index
+	if len(filename.encode("cp949")) != 5:
+		raise EPError("Filename length should be 5 bytes")
+	loop_dict[filename] = Loop(
+		_index,
+		filename,
+		count,
+		intro,
+		length,
+		bridge,
+		goto,
+	)
+	_index += 1
 
 
 def u2i4(s):
@@ -346,7 +362,7 @@ class SoundLooper:
 	def __init__(self):
 		self.current_loop = EUDVariable(-1)
 		self.previous_loop = EUDVariable(-1)
-		self.current_bar = EUDLightVariable()
+		self.current_bar = EUDVariable()
 		self.bar_carry = EUDLightVariable()
 		self._check_time = Forward()
 		self._set_bar_length = Forward()
@@ -514,6 +530,10 @@ class SoundLooper:
 			self.pause()
 		EUDEndIf()
 
+	def sendcurrentbar(self, loop):
+		loop = T2i(loop)
+		VProc(self.current_bar, self.current_bar.QueueAssignTo(EPD(SoundLooper.bars) + loop))
+
 	@classmethod
 	def sendbar(cls, dst, src, _fdict={}):
 		dst, src = T2i(dst), T2i(src)
@@ -531,6 +551,11 @@ class SoundLooper:
 
 	@classmethod
 	def setloopbar(cls, loop, bar):
+		loop = T2i(loop)
+		return f_dwwrite_epd(EPD(SoundLooper.bars) + loop, bar)
+
+	@classmethod
+	def _setloopbar(cls, loop, bar):
 		loop = T2i(loop)
 		return SetMemoryEPD(EPD(SoundLooper.bars) + loop, SetTo, bar)
 
