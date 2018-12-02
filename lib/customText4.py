@@ -73,13 +73,13 @@ class CPString:
         self.length = len(content) // 4
         self.trigger = list()
         self.valueAddr = list()
-        actions = [
+        actions = FlattenList([
             [
                 SetDeaths(CurrentPlayer, SetTo, f_b2i(self.content[i : i + 4]), 0),
                 SetMemory(CP, Add, 1),
             ]
             for i in range(0, len(self.content), 4)
-        ]
+        ])
         for i in range(0, len(actions), 64):
             t = RawTrigger(actions=actions[i : i + 64])
             self.trigger.append(t)
@@ -186,24 +186,11 @@ strBuffer = 1
 
 
 def f_setcachedcp():
-    _next = Forward()
-    RawTrigger(
-        nextptr=_curpl_var.GetVTable(),
-        actions=[
-            SetNextPtr(_curpl_var.GetVTable(), _next),
-            _curpl_var.QueueAssignTo(EPD(CP)),
-        ],
-    )
-    _next << NextTrigger()
+    VProc(_curpl_var, [_curpl_var.QueueAssignTo(EPD(CP))])
 
 
 def f_setlocalcp():
-    _next = Forward()
-    RawTrigger(
-        nextptr=cp.GetVTable(),
-        actions=[SetNextPtr(cp.GetVTable(), _next), cp.QueueAssignTo(EPD(CP))],
-    )
-    _next << NextTrigger()
+    VProc(cp, [cp.QueueAssignTo(EPD(CP))])
 
 
 @EUDFunc
@@ -398,13 +385,14 @@ def f_addptr_cp(number):
     DoActions(
         [
             [digit[i].SetNumber(0) for i in range(8)],
-            SetDeaths(CurrentPlayer, SetTo, f_b2i(b"0000"), 0),
+            SetDeaths(CurrentPlayer, SetTo, b2i4(b"0000"), 0),
         ]
     )
 
     def f(x):
         t = x % 16
-        return 2 ** (2 * t - t % 4)
+        q, r = divmod(t, 4)
+        return 2 ** (r + 8 * (3 - q))
 
     for i in range(31, -1, -1):
         RawTrigger(
@@ -420,14 +408,14 @@ def f_addptr_cp(number):
                 RawTrigger(
                     conditions=digit[j + 4 * (i // 16)].AtLeast(10),
                     actions=SetDeaths(
-                        CurrentPlayer, Add, (b"A"[0] - b":"[0]) * (256 ** j), 0
+                        CurrentPlayer, Add, (b"A"[0] - b":"[0]) * (256 ** (3 - j)), 0
                     ),
                 )
             DoActions(
                 [
                     SetMemory(CP, Add, 1),
                     [
-                        SetDeaths(CurrentPlayer, SetTo, f_b2i(b"0000"), 0)
+                        SetDeaths(CurrentPlayer, SetTo, b2i4(b"0000"), 0)
                         if i == 16
                         else []
                     ],
@@ -560,16 +548,8 @@ bufferepd = EUDVariable()
 
 
 def f_makeText(*args):
-    _next = Forward()
     f_getcurpl()
-    RawTrigger(
-        nextptr=bufferepd.GetVTable(),
-        actions=[
-            SetNextPtr(bufferepd.GetVTable(), _next),
-            bufferepd.QueueAssignTo(EPD(CP)),
-        ],
-    )
-    _next << NextTrigger()
+    VProc(bufferepd, [bufferepd.QueueAssignTo(EPD(CP))])
     f_addText(*args)
 
 
@@ -587,16 +567,7 @@ def f_displayTextP(player):
 @EUDFunc
 def f_displayTextAll():
     f_setlocalcp()
-    _next = Forward()
-    RawTrigger(
-        nextptr=_curpl_var.GetVTable(),
-        actions=[
-            SetNextPtr(_curpl_var.GetVTable(), _next),
-            _curpl_var.QueueAssignTo(EPD(CP)),
-            DisplayText(strBuffer),
-        ],
-    )
-    _next << NextTrigger()
+    VProc(_curpl_var, [_curpl_var.QueueAssignTo(EPD(CP)), DisplayText(strBuffer)])
 
 
 def f_print(*args):
@@ -781,7 +752,7 @@ def f_chatprintAll(line, *args):
 
 
 @EUDFunc
-def f_addstr_epd(dstp, src):
+def f_char_addstr(dstp, src):
     br1.seekoffset(src)
 
     if EUDInfLoop()():
@@ -806,21 +777,19 @@ def f_addstr_epd(dstp, src):
     return dstp
 
 
-def f_addbyte_epd(dstp, b):
+def f_char_addbyte(dstp, b):
     while len(b) % 4 >= 1:
         b = b + b"\x0D"
-    for i in range(len(b) // 4):
-        f_dwwrite_epd(dstp, f_b2i(b[4 * i : 4 * (i + 1)]))
-        dstp += 1
+    DoActions([[SetMemoryEPD(dstp, SetTo, b2i4(b[i:i + 4])), dstp.AddNumber(1)] for i in range(0, len(b), 4)])
     return dstp
 
 
-def f_strbyte_epd(dstp, s, encoding="UTF-8"):
+def f_char_strbyte(dstp, s, encoding="UTF-8"):
     b = s.encode(encoding)
-    return f_addbyte_epd(dstp, b)
+    return f_char_addbyte(dstp, b)
 
 
-def f_add1c_epd(dstp, s, encoding="UTF-8"):
+def f_char_add1c(dstp, s, encoding="UTF-8"):
     string = ""
     color = ""
     for i, c in enumerate(s):
@@ -842,11 +811,11 @@ def f_add1c_epd(dstp, s, encoding="UTF-8"):
         if color == "":
             color = "\x0D"
 
-    return f_strbyte_epd(dstp, string, encoding)
+    return f_char_strbyte(dstp, string, encoding)
 
 
 @EUDFunc
-def f_adddw_epd(dstp, number):
+def f_char_addw(dstp, number):
     skipper = [Forward() for _ in range(9)]
     ch = [0] * 10
 
@@ -865,7 +834,7 @@ def f_adddw_epd(dstp, number):
 
 
 @EUDFunc
-def f_addptr_epd(dstp, number):
+def f_char_addptr(dstp, number):
     ch = [0] * 8
     for i in range(8):
         number, ch[i] = f_div(number, 16)
@@ -881,42 +850,44 @@ def f_addptr_epd(dstp, number):
     return dstp
 
 
-def f_cp949_print_epd(dstp, *args):
+def f_cp949_charprint(dstp, *args):
     arg = FlattenList(args)
     for arg in args:
         if isUnproxyInstance(arg, f_str):
-            dstp = f_addstr_epd(dstp, arg._value)
+            dstp = f_char_addstr(dstp, arg._value)
+        elif isUnproxyInstance(arg, f_1c):
+            dstp = f_char_add1c(dstp, arg._value, encoding="cp949")
         elif isUnproxyInstance(arg, f_get):
             SetVariables(arg._value, dstp)
         elif isUnproxyInstance(arg, bytes):
-            dstp = f_addbyte_epd(dstp, arg)
+            dstp = f_char_addbyte(dstp, arg)
         elif isUnproxyInstance(arg, str):
-            dstp = f_strbyte_epd(dstp, arg, encoding="cp949")
+            dstp = f_char_strbyte(dstp, arg, encoding="cp949")
         elif isUnproxyInstance(arg, DBString):
-            dstp = f_addstr_epd(dstp, arg.GetStringMemoryAddr())
+            dstp = f_char_addstr(dstp, arg.GetStringMemoryAddr())
         elif isUnproxyInstance(arg, int):
-            dstp = f_addstr_epd(dstp, Db(u2b(str(arg & 0xFFFFFFFF)) + b"\0"))
+            dstp = f_char_addstr(dstp, Db(u2b(str(arg & 0xFFFFFFFF)) + b"\0"))
         elif isUnproxyInstance(arg, EUDVariable) or IsConstExpr(arg):
-            dstp = f_adddw_epd(dstp, arg)
+            dstp = f_char_adddw(dstp, arg)
         elif isUnproxyInstance(arg, hptr):
-            dstp = f_addptr_epd(dstp, arg._value)
+            dstp = f_char_addptr(dstp, arg._value)
         else:
             raise EPError("unknown parameter type %s given to print_epd." % type(arg))
     f_dwwrite_epd(dstp, 0)
     return dstp
 
 
-def f_utf8_print_epd(dstp, *args):
+def f_utf8_charprint(dstp, *args):
     arg = FlattenList(args)
     for arg in args:
         if isUnproxyInstance(arg, str):
-            dstp = f_strbyte_epd(dstp, arg)
+            dstp = f_char_strbyte(dstp, arg)
         elif isUnproxyInstance(arg, f_s2u):
             dstp = f_cp949_to_utf8_cpy_epd(dstp, arg._value)
         elif isUnproxyInstance(arg, f_1c):
-            dstp = f_add1c_epd(dstp, arg._value)
+            dstp = f_char_add1c(dstp, arg._value)
         else:
-            dstp = f_cp949_print_epd(dstp, arg)
+            dstp = f_cp949_charprint(dstp, arg)
     f_dwwrite_epd(dstp, 0)
     return dstp
 
@@ -924,9 +895,9 @@ def f_utf8_print_epd(dstp, *args):
 def f_sprintf_epd(dstp, *args):
     ret = EUDVariable()
     if EUDIf()(f_is116()):
-        ret << f_cp949_print_epd(dstp, *args)
+        ret << f_cp949_charprint(dstp, *args)
     if EUDElse()():
-        ret << f_utf8_print_epd(dstp, *args)
+        ret << f_utf8_charprint(dstp, *args)
     EUDEndIf()
 
     return ret
@@ -1139,9 +1110,11 @@ def f_setTbl(tblID, offset, length, *args):
 colorArray = Color
 f_getTblPtr = f_tblptr
 f_ct_print = f_utf8_print
-f_ct_print_epd = f_utf8_print_epd
+f_ct_print_epd = f_utf8_charprint
 f_cprint = f_sprintf
 f_cprint_epd = f_sprintf_epd
+f_getoldcp = f_getcurpl
+f_setoldcp = f_setcachedcp
 
 
 def f_chatAnnouncement(*args):
