@@ -3,7 +3,6 @@ import math
 
 import eudplib.eudlib.stringf.cputf8 as cputf
 from eudplib import *
-from eudplib.core.curpl import _curpl_var
 from eudplib.eudlib.stringf.rwcommon import br1, bw1
 
 
@@ -183,10 +182,28 @@ ptr, epd, cp = EUDCreateVariables(3)
 player_colors = "\x08\x0E\x0F\x10\x11\x15\x16\x17\x18\x19\x1B\x1C\x1D\x1E\x1F"
 Color = EUDArray([EPD(Db(u2b(x))) for x in player_colors])
 strBuffer = 1
+_cpcache = EUDVariable()
+
+
+@EUDFunc
+def f_updatecpcache():
+    _cpcachematch = Forward()
+    if EUDIfNot()([_cpcachematch << Memory(CP, Exactly, 0)]):
+        DoActions(_cpcache.SetNumber(0))
+        for i in range(31, -1, -1):
+            RawTrigger(
+                conditions=Memory(CP, AtLeast, 2**i),
+                actions=[
+                    SetMemory(CP, Subtract, 2**i),
+                    _cpcache.AddNumber(2**i)
+                ]
+            )
+        DoActions([SetMemory(CP, SetTo, _cpcache), SetMemory(_cpcachematch + 8, SetTo, _cpcache)])
+    EUDEndIf()
 
 
 def f_setcachedcp():
-    VProc(_curpl_var, [_curpl_var.QueueAssignTo(EPD(CP))])
+    VProc(_cpcache, [_cpcache.QueueAssignTo(EPD(CP))])
 
 
 def f_setlocalcp():
@@ -280,7 +297,7 @@ class f_get:  # get ptr/epd in middle of string
         self._value = value
 
 
-class f_1c:
+class f_char:
     def __init__(self, value):
         self._value = value
 
@@ -296,7 +313,7 @@ def f_color(i):  # f_dbstr_addstr(Color[i])
 
 def Name(x):
     if x == CurrentPlayer:
-        x = _curpl_var
+        x = _cpcache
     if isUnproxyInstance(x, type(P1)):
         x = EncodePlayer(x)
     return f_str(0x57EEEB + 36 * x)
@@ -548,7 +565,7 @@ bufferepd = EUDVariable()
 
 
 def f_makeText(*args):
-    f_getcurpl()
+    f_updatecpcache()
     VProc(bufferepd, [bufferepd.QueueAssignTo(EPD(CP))])
     f_addText(*args)
 
@@ -567,7 +584,7 @@ def f_displayTextP(player):
 @EUDFunc
 def f_displayTextAll():
     f_setlocalcp()
-    VProc(_curpl_var, [_curpl_var.QueueAssignTo(EPD(CP)), DisplayText(strBuffer)])
+    VProc(_cpcache, [_cpcache.QueueAssignTo(EPD(CP)), DisplayText(strBuffer)])
 
 
 def f_print(*args):
@@ -607,14 +624,14 @@ def f_playSound(*args):
 
 
 def f_playSoundP(player, *args):
-    f_getcurpl()
-    DoActions(SetMemory(0x6509B0, SetTo, player))
+    f_updatecpcache()
+    DoActions(SetMemory(CP, SetTo, player))
     f_playSound(*args)
     f_setcachedcp()
 
 
 def f_playSoundAll(*args):
-    f_getcurpl()
+    f_updatecpcache()
     f_setlocalcp()
     f_playSound(*args)
     f_setcachedcp()
@@ -815,7 +832,7 @@ def f_char_add1c(dstp, s, encoding="UTF-8"):
 
 
 @EUDFunc
-def f_char_addw(dstp, number):
+def f_char_adddw(dstp, number):
     skipper = [Forward() for _ in range(9)]
     ch = [0] * 10
 
@@ -855,7 +872,7 @@ def f_cp949_charprint(dstp, *args):
     for arg in args:
         if isUnproxyInstance(arg, f_str):
             dstp = f_char_addstr(dstp, arg._value)
-        elif isUnproxyInstance(arg, f_1c):
+        elif isUnproxyInstance(arg, f_char):
             dstp = f_char_add1c(dstp, arg._value, encoding="cp949")
         elif isUnproxyInstance(arg, f_get):
             SetVariables(arg._value, dstp)
@@ -884,7 +901,7 @@ def f_utf8_charprint(dstp, *args):
             dstp = f_char_strbyte(dstp, arg)
         elif isUnproxyInstance(arg, f_s2u):
             dstp = f_cp949_to_utf8_cpy_epd(dstp, arg._value)
-        elif isUnproxyInstance(arg, f_1c):
+        elif isUnproxyInstance(arg, f_char):
             dstp = f_char_add1c(dstp, arg._value)
         else:
             dstp = f_cp949_charprint(dstp, arg)
