@@ -8,9 +8,30 @@ import eudx
 from customText4 import cw
 
 """
-texteffect.py 0.3.0 by Artanis
+texteffect.py 0.3.1 by Artanis
 
-0.3.0 - complete rewrite for customText4 0.3.2
+## [0.3.1] - 2018-12-03
+### Fixed
+- Fix keep running f_fadeout(line=12) crash SC
+
+
+## [0.3.0] - 2018-12-03
+### A complete code rewrite for customText4 0.3.2
+### Changed
+- Change named argument's name of f_fadein, f_fadeout as followings
+    interval -> wait
+    autoreset -> reset
+- Text identifier and timer are now identical
+    - Can remove text on screen by f_remove(timer), effects sharing timer uses same identifier.
+
+### Added
+- f_char_cpprint and series of CurrentPlayer print functions are added.
+- Add f_settimer(timer, Modifier, Value)
+
+### Removed
+- ct.f_get is unsupported for now.
+
+
 0.2.1 - reduce trigger amount. increase identifiers from 253 to 113379904.
 0.2.0 - corrected issue: fixed-line display doesn't remove previous text.
         return 0 when effect is over, return 1 when effect is ongoing.
@@ -116,15 +137,19 @@ def f_charprint(*args):
 def _init():
     global _cpbelowbuffer, _isbelowbuffer
     _cpbelowbuffer = EUDVariable()
-    _checkcp = Forward()
+    _checkcp, _checkSTR = Forward(), Forward()
     _isbelowbuffer = RawTrigger(
-        conditions=[_checkcp << Memory(CP, AtMost, 1)],
+        conditions=[
+            _checkcp << Memory(CP, AtMost, 1),
+            _checkSTR << Memory(CP, AtLeast, 0)
+        ],
         actions=_cpbelowbuffer.SetNumber(1),
     )
     ct.f_reset()
     DoActions(
         [
             SetMemory(_checkcp + 8, Add, ct.epd),
+            SetMemory(_checkSTR + 8, SetTo, ct.STRepd),
             [SetMemory(0x640B60 + 436 * i, SetTo, 0) for i in range(7)],
             [SetMemory(0x640C3C + 436 * i, SetTo, 0) for i in range(5)],
         ]
@@ -192,7 +217,7 @@ def _remove(id1, id2):
                 eudx.MemoryX(_even - 4, AtLeast, 1, 0xFF0000),
                 even[i] << Memory(_even, Exactly, -1),
             ],
-            actions=[txtPtr.SetNumber(2 * i), SetMemory(_odd, SetTo, 0)],
+            actions=[txtPtr.SetNumber(2 * i + 1), SetMemory(_even, SetTo, 0)],
         )
     return txtPtr
 
@@ -345,24 +370,17 @@ def f_fadein(*args, color=None, wait=1, line=-1, reset=True, timer=None):
         VProc(
             ct.bufferepd,
             [
-                counter.AddNumber(1),
                 SetMemory(CP, SetTo, 3 - len(color)),
                 ct.bufferepd.QueueAddTo(EPD(CP)),
             ],
         )
     elif line == 12:
         printEffectOnErrorline(ids, *args)
-        DoActions(
-            [
-                counter.AddNumber(1),
-                SetMemory(CP, SetTo, EPD(0x640B60 + 218 * 12) + 3 - len(color)),
-            ]
-        )
+        DoActions(SetMemory(CP, SetTo, EPD(0x640B60 + 218 * 12) + 3 - len(color)))
     else:
         DoActions(
             [
                 color_v.SetNumber(2),
-                counter.AddNumber(1),
                 SetMemory(CP, Add, 3 - len(color)),
             ]
         )
@@ -383,26 +401,28 @@ def f_fadein(*args, color=None, wait=1, line=-1, reset=True, timer=None):
         EUDEndIf()
     _skip = [Forward() for _ in range(3)]
     ret = EUDVariable()
-    DoActions(
-        [
-            SetMemory(CP, Add, timer),
+    VProc(timer, [
+            timer.QueueAddTo(EPD(CP)),
+            counter.AddNumber(1),
             [SetMemory(check_gametick + 8, Add, 1) if reset is True else []],
-            ret.SetNumber(0),
-            SetNextPtr(_skip[0], _skip[2]),
+            ret.SetNumber(1),
+            SetNextPtr(_skip[0], _skip[1]),
         ]
     )
     _skip[0] << RawTrigger(
-        conditions=Deaths(CurrentPlayer, AtLeast, 1, 0),
+        conditions=[
+            Deaths(CurrentPlayer, Exactly, 0, 0),
+            timer.AtLeast(2 + len(color))
+        ],
         actions=[
-            SetMemory(CP, Add, len(color) - 1),
-            SetNextPtr(_skip[0], _skip[1]),
-            ret.SetNumber(1),
+            SetNextPtr(_skip[0], _skip[2]),
+            ret.SetNumber(0),
+            counter.SetNumber(0),
         ],
     )
-    _skip[1] << NextTrigger()
+    _skip[1] << RawTrigger(actions=SetMemory(CP, Add, len(color) - 1))
     R2L(color, timer)
-    _skip[2] << RawTrigger(conditions=ret.Exactly(0), actions=counter.SetNumber(0))
-    RawTrigger(
+    _skip[2] << RawTrigger(
         conditions=counter.AtLeast(max(wait, 1)),
         actions=[counter.SetNumber(0), timer.AddNumber(1)],
     )
@@ -461,16 +481,29 @@ def f_fadeout(*args, color=None, wait=1, line=-1, reset=True, timer=None):
                 ],
             )
         EUDEndIf()
+    if isinstance(line, int) and line == 12:
+        ret = EUDVariable()
+        _skip = [Forward() for _ in range(3)]
     DoActions(
         [
             counter.AddNumber(1),
             SetMemory(CP, Add, len(color) - 1),
             SetMemory(CP, Subtract, timer),
             [SetMemory(check_gametick + 8, Add, 1) if reset is True else []],
+            [ret.SetNumber(1), SetNextPtr(_skip[0], _skip[1])] if isinstance(line, int) and line == 12 else []
         ]
     )
-    ret = EUDVariable()
-    ret << R2L(color, timer)
+    if isinstance(line, int) and line == 12:
+        _skip[0] << RawTrigger(
+            conditions=Memory(CP, AtMost, EPD(0x640B60 + 218 * 12) - 1),
+            actions=[ret.SetNumber(0), SetNextPtr(_skip[0], _skip[2])]
+        )
+        _skip[1] << NextTrigger()
+        R2L(color, timer)
+    else:
+        ret = R2L(color, timer)
+    if isinstance(line, int) and line == 12:
+        _skip[2] << NextTrigger()
     RawTrigger(conditions=ret.Exactly(0), actions=counter.SetNumber(0))
     RawTrigger(
         conditions=counter.AtLeast(max(wait, 1)),
