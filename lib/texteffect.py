@@ -1,7 +1,8 @@
 import itertools
 
+import eudplib.eudlib.stringf.cputf8 as cputf
 from eudplib import *
-from eudplib.eudlib.stringf.rwcommon import br1, bw1
+from eudplib.eudlib.stringf.rwcommon import br1
 
 import customText as ct
 import eudx
@@ -48,6 +49,39 @@ color_codes.remove(0x12)  # right align
 color_codes.remove(0x13)  # center align
 color_code = b"\x02"
 color_v = EUDVariable()
+
+
+@EUDFunc
+def f_char_cp949_to_utf8_cp(src):
+    br1.seekoffset(src)
+
+    if EUDInfLoop()():
+        b1 = br1.readbyte()
+        EUDBreakIf(b1 == 0)
+        if EUDIf()(b1 < 128):
+            cw.writebyte(color_v)
+            cw.writebyte(b1)
+            cw.flushdword()
+            dst += 1
+        if EUDElse()():
+            b2 = br1.readbyte()
+            EUDBreakIf(b2 == 0)
+            code = cputf.cvtb[b2 * 256 + b1]
+            if EUDIf()(code <= 0x07FF):  # Encode as 2-byte
+                cw.writebyte(color_v)
+                cw.writebyte(0b11000000 | (code // (1 << 6)) & 0b11111)
+                cw.writebyte(0b10000000 | (code // (1 << 0)) & 0b111111)
+                cw.flushdword()
+                dst += 2
+            if EUDElse()():  # Encode as 3-byte
+                cw.writebyte(color_v)
+                cw.writebyte(0b11100000 | (code // (1 << 12)) & 0b1111)
+                cw.writebyte(0b10000000 | (code // (1 << 6)) & 0b111111)
+                cw.writebyte(0b10000000 | (code // (1 << 0)) & 0b111111)
+                dst += 3
+            EUDEndIf()
+        EUDEndIf()
+    EUDEndInfLoop()
 
 
 @EUDFunc
@@ -117,6 +151,8 @@ def f_char_cpprint(*args):
         elif isUnproxyInstance(arg, ct.f_str):
             br1.seekoffset(arg._value)
             f_char_addstr_cp(arg._value)
+        elif isUnproxyInstance(arg, ct.f_s2u):
+            f_char_cp949_to_utf8_cp(arg._value)
         elif isUnproxyInstance(arg, ct.f_strepd):
             br1.seekepd(arg._value)
             f_addstr_cp_epd(arg._value)

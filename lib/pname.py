@@ -1,21 +1,27 @@
 from eudplib import *
+from eudplib.eudlib.stringf.rwcommon import br1, br2
+
 try:
     import tempcustomText as ct
 except ImportError:
     try:
-        import customText4 as ct
+        import customText as ct
     except ImportError:
         try:
-            import customText3 as ct
+            import customText4 as ct
         except ImportError:
-            raise EPError("customText 라이브러리가 필요합니다.")
+            try:
+                import customText3 as ct
+            except ImportError:
+                raise EPError("customText 라이브러리가 필요합니다.")
+            else:
+                print("pname: customText3 사용")
         else:
-            print("pname: customText3 사용")
+            print("pname: customText4 사용")
     else:
-        print("pname: customText4 사용")
+        print("pname: customText 사용")
 else:
     print("pname: tempcustomText 사용")
-from eudplib.eudlib.stringf.rwcommon import br1, br2
 
 baselen = EUDArray(8)
 

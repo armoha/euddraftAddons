@@ -303,33 +303,32 @@ def f_cp949_to_utf8_cpy(dst, src):
 
 
 @EUDFunc
-def f_cp949_to_utf8_cpy_epd(dst, src):
+def f_cp949_to_utf8_cp(src):
     br1.seekoffset(src)
 
     if EUDInfLoop()():
         b1 = br1.readbyte()
         EUDBreakIf(b1 == 0)
         if EUDIf()(b1 < 128):
-            f_dwwrite_epd(dst, b1 + 0xD0D0D00)
+            cw.writebyte(b1)
+            dst += 1
         if EUDElse()():
             b2 = br1.readbyte()
             EUDBreakIf(b2 == 0)
             code = cputf.cvtb[b2 * 256 + b1]
             if EUDIf()(code <= 0x07FF):  # Encode as 2-byte
-                c1 = 0b11000000 | (code // (1 << 6)) & 0b11111
-                c2 = 0b10000000 | (code // (1 << 0)) & 0b111111
-                f_dwwrite_epd(dst, c1 + c2 * 256 + 0xD0D0000)
+                cw.writebyte(0b11000000 | (code // (1 << 6)) & 0b11111)
+                cw.writebyte(0b10000000 | (code // (1 << 0)) & 0b111111)
+                dst += 2
             if EUDElse()():  # Encode as 3-byte
-                c1 = 0b11100000 | (code // (1 << 12)) & 0b1111
-                c2 = 0b10000000 | (code // (1 << 6)) & 0b111111
-                c3 = 0b10000000 | (code // (1 << 0)) & 0b111111
-                f_dwwrite_epd(dst, c1 + c2 * 256 + c3 * 65536 + 0xD000000)
+                cw.writebyte(0b11100000 | (code // (1 << 12)) & 0b1111)
+                cw.writebyte(0b10000000 | (code // (1 << 6)) & 0b111111)
+                cw.writebyte(0b10000000 | (code // (1 << 0)) & 0b111111)
+                dst += 3
             EUDEndIf()
         EUDEndIf()
-        dst += 1
+        cw.flushdword()
     EUDEndInfLoop()
-
-    return dst
 
 
 class f_str:  # f_dbstr_addstr
@@ -523,6 +522,8 @@ def f_cpprint(*args):
             _next << NextTrigger()
         elif isUnproxyInstance(arg, f_str):
             f_addstr_cp(arg._value)
+        elif isUnproxyInstance(arg, f_s2u):
+            f_cp949_to_utf8_cp(arg._value)
         elif isUnproxyInstance(arg, f_strepd):
             f_addstr_cp_epd(arg._value)
         elif isUnproxyInstance(arg, DBString):
