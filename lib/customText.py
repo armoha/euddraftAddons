@@ -1,44 +1,91 @@
 # -*- coding: utf-8 -*-
+import atexit
 import math
 
 import eudplib.eudlib.stringf.cputf8 as cputf
 from eudplib import *
+from eudplib.core.mapdata.stringmap import ApplyStringMap, strmap
 from eudplib.eudlib.stringf.rwcommon import br1, bw1
 
-
 """
-customText 0.3.2
+customText 0.4.0 by Artanis
 
-0.3.2 clean f_init
-0.3.1 fix hptr, cpcache
-0.3.0 Add CPString, f_cpprint
-0.2.1 f_playSoundP, f_playSoundAll work properly.
-0.2.0 Add Legacy Support: chatAnnouncement + old function names.
-    Add f_chatprintAll/_epd. Change f_chatprint: print for CurrentPlayer.
-    Add f_get(EUDVariable): retrieve current position.
-0.1.3 f_add1c_epd makes malaligned string when it doesn't have a color code
-0.1.2 fix EUD error when modify stat_txt.tbl
-0.1.1 fix bug; ct.epd/ptr set to 0 in SC 1.16
-0.1.0 initial release
+0.4.0
+- Integrated customText3 and customText4.
+- Added predicting (string offset % 4) and fitting to 0.
+
+0.3.3
+- Added f_cp949 class for stat_txt.tbl cpprint.
+
+0.3.2
+- Cleaned f_init.
+
+0.3.1
+- Fixed hptr, f_addptr functions.
+- Added independent cache for CurrentPlayer.
+
+0.3.0
+- Added CPString, f_cpprint.
+
+0.2.1
+- Fixed f_playSoundP, f_playSoundAll.
+
+0.2.0
+- Added Legacy Support: chatAnnouncement + old function names.
+- Added f_chatprintAll/_epd. Change f_chatprint: print for CurrentPlayer.
+- Added f_get(EUDVariable): retrieve current position.
+
+0.1.3
+- Fixed f_add1c_epd making malaligned string when it doesn't have a color code.
+
+0.1.2
+- Fixed EUD error when modify stat_txt.tbl.
+
+0.1.1
+- Fixed bug; ct.epd/ptr set to 0 in SC 1.16.
+
+0.1.0
+- Initial Release
 """
+chkt = GetChkTokenized()
+STR = chkt.getsection("STR")
+
+
+def onInit():
+    GetStringIndex("@2+4n!")
+    strBuffer = GetStringIndex("\x0D" * 1308)
+
+    def _fill():
+        # calculate offset of buffer string
+        stroffset = []
+        outindex = 2 * len(strmap._dataindextb) + 2
+
+        for s in strmap._datatb:
+            stroffset.append(outindex)
+            outindex += len(s) + 1
+        bufferoffset = stroffset[strmap._dataindextb[strBuffer - 1]]
+        if bufferoffset % 4 != 2:
+            strmap._datatb[strmap._dataindextb[strBuffer - 2]] = b"@2+4n!"[0:4 - bufferoffset % 4]
+            ApplyStringMap(chkt)
+
+    RegisterCreatePayloadCallback(_fill)
+
+    def _alert():
+        STR = chkt.getsection("STR")
+        buffer_ptr = b2i2(STR[2 * strBuffer:2 * strBuffer + 2])
+        if buffer_ptr % 4 >= 1:
+            raise EPError("Parity mismatched")
+    atexit.register(_alert)
+
+    return strBuffer
+
+
+strBuffer = onInit()
+CP = 0x6509B0
 
 
 def f_b2i(x):
     return int.from_bytes(x, byteorder="little")
-
-
-CP = 0x6509B0
-chkt = GetChkTokenized()
-STR = chkt.getsection("STR")
-lenSTR2 = b2i2(STR[6:8]) - 2 * b2i2(STR[0:2])
-if lenSTR2 < 218:
-    print(
-        """*경고* 현재 1번 스트링 길이: {}
-다른 스트링 덮어쓰기를 방지하려면
-맵 소개를 218자 이상으로 두는걸 권장합니다.""".format(
-            lenSTR2
-        )
-    )
 
 
 def _s2b(x):
@@ -72,13 +119,15 @@ class CPString:
         self.length = len(content) // 4
         self.trigger = list()
         self.valueAddr = list()
-        actions = FlattenList([
+        actions = FlattenList(
             [
-                SetDeaths(CurrentPlayer, SetTo, f_b2i(self.content[i : i + 4]), 0),
-                SetMemory(CP, Add, 1),
+                [
+                    SetDeaths(CurrentPlayer, SetTo, f_b2i(self.content[i : i + 4]), 0),
+                    SetMemory(CP, Add, 1),
+                ]
+                for i in range(0, len(self.content), 4)
             ]
-            for i in range(0, len(self.content), 4)
-        ])
+        )
         for i in range(0, len(actions), 64):
             t = RawTrigger(actions=actions[i : i + 64])
             self.trigger.append(t)
@@ -127,7 +176,7 @@ class CPByteWriter:
 
     def __init__(self):
         self._suboffset = EUDVariable()
-        self._b = [EUDLightVariable(f_b2i(b"\r")) for _ in range(4)]
+        self._b = [EUDLightVariable(b2i1(b"\r")) for _ in range(4)]
 
     @EUDMethod
     def writebyte(self, byte):
@@ -172,7 +221,7 @@ class CPByteWriter:
             [
                 SetMemory(CP, Add, 1),
                 self._suboffset.SetNumber(0),
-                [self._b[i].SetNumber(f_b2i(b"\r")) for i in range(4)],
+                [self._b[i].SetNumber(b2i1(b"\r")) for i in range(4)],
             ]
         )
 
@@ -181,7 +230,6 @@ cw = CPByteWriter()
 ptr, epd, cp = EUDCreateVariables(3)
 player_colors = "\x08\x0E\x0F\x10\x11\x15\x16\x17\x18\x19\x1B\x1C\x1D\x1E\x1F"
 Color = EUDArray([EPD(Db(u2b(x))) for x in player_colors])
-strBuffer = 1
 _cpcache = EUDVariable()
 
 
@@ -192,13 +240,15 @@ def f_updatecpcache():
         DoActions(_cpcache.SetNumber(0))
         for i in range(31, -1, -1):
             RawTrigger(
-                conditions=Memory(CP, AtLeast, 2**i),
-                actions=[
-                    SetMemory(CP, Subtract, 2**i),
-                    _cpcache.AddNumber(2**i)
-                ]
+                conditions=Memory(CP, AtLeast, 2 ** i),
+                actions=[SetMemory(CP, Subtract, 2 ** i), _cpcache.AddNumber(2 ** i)],
             )
-        DoActions([SetMemory(CP, SetTo, _cpcache), SetMemory(_cpcachematch + 8, SetTo, _cpcache)])
+        DoActions(
+            [
+                SetMemory(CP, SetTo, _cpcache),
+                SetMemory(_cpcachematch + 8, SetTo, _cpcache),
+            ]
+        )
     EUDEndIf()
 
 
@@ -297,12 +347,12 @@ class f_get:  # get ptr/epd in middle of string
         self._value = value
 
 
-class f_char:
+class f_strepd:  # EPD variation of f_dbstr_addstr
     def __init__(self, value):
         self._value = value
 
 
-class f_strepd:  # EPD variation of f_dbstr_addstr
+class f_cp949:  # print string as cp949 encoding
     def __init__(self, value):
         self._value = value
 
@@ -325,7 +375,7 @@ def f_addbyte_cp(b):
     DoActions(
         [
             [
-                SetDeaths(CurrentPlayer, SetTo, f_b2i(b[i : i + 4]), 0),
+                SetDeaths(CurrentPlayer, SetTo, b2i4(b[i : i + 4]), 0),
                 SetMemory(CP, Add, 1),
             ]
             for i in range(0, len(b), 4)
@@ -454,6 +504,8 @@ def f_cpprint(*args):
     for arg in args:
         if isUnproxyInstance(arg, str):
             arg = u2utf8(arg)
+        elif isUnproxyInstance(arg, f_cp949):
+            arg = u2b(arg._value)
         elif isUnproxyInstance(arg, int):
             arg = u2b(str(arg & 0xFFFFFFFF))
         if isUnproxyInstance(arg, bytes):
@@ -661,7 +713,7 @@ def f_init():
             SetMemory(add_STRepd + 20, SetTo, STRepd),
         ]
     )
-    newptr = f_strptr(1)  # STRptr + newptr
+    newptr = f_strptr(strBuffer)  # STRptr + newptr
     newepd = EPD(newptr)
     DoActions(
         [
@@ -701,10 +753,12 @@ _nextptrcacheMatchCond = Forward()
 
 @EUDFunc
 def _updatenextptrcache():
-    DoActions([
-        SetMemory(_restorePtr + 20, SetTo, 0x59CCA8),
-        SetMemory(_nextptrcacheMatchCond + 8, SetTo, 0x59CCA8)
-    ])
+    DoActions(
+        [
+            SetMemory(_restorePtr + 20, SetTo, 0x59CCA8),
+            SetMemory(_nextptrcacheMatchCond + 8, SetTo, 0x59CCA8),
+        ]
+    )
     for i in range(10, -1, -1):
         RawTrigger(
             conditions=Memory(NEXT_PTR, AtLeast, 0x59CCA8 + 336 * 2 ** i),
@@ -747,209 +801,34 @@ def f_addChat(*args):
 
 
 def f_chatprint(line, *args):
-    if isinstance(line, int) and line == 12:
-        f_printError(EncodePlayer(CurrentPlayer))
+    if isinstance(line, int):
+        if line >= 0 and line <= 10:
+            DoActions([SetMemory(0x640B58, SetTo, line), DisplayText(" ")])
+        elif line == 12:
+            f_printError(EncodePlayer(CurrentPlayer))
     if EUDIf()(Memory(0x57F1B0, Exactly, f_getcurpl())):
         chatptr << f_sprintf(f_chatdst(line), *args)
     EUDEndIf()
 
 
 def f_chatprintP(player, line, *args):
-    if isinstance(line, int) and line == 12:
-        f_printError(player)
+    if isinstance(line, int):
+        if line >= 0 and line <= 10:
+            DoActions([SetMemory(0x640B58, SetTo, line), DisplayText(" ")])
+        elif line == 12:
+            f_printError(player)
     if EUDIf()(Memory(0x57F1B0, Exactly, player)):
         chatptr << f_sprintf(f_chatdst(line), *args)
     EUDEndIf()
 
 
 def f_chatprintAll(line, *args):
-    if isinstance(line, int) and line == 12:
-        f_printError(EncodePlayer(AllPlayers))
+    if isinstance(line, int):
+        if line >= 0 and line <= 10:
+            DoActions([SetMemory(0x640B58, SetTo, line), DisplayText(" ")])
+        elif line == 12:
+            f_printError(EncodePlayer(AllPlayers))
     chatptr << f_sprintf(f_chatdst(line), *args)
-
-
-@EUDFunc
-def f_char_addstr(dstp, src):
-    br1.seekoffset(src)
-
-    if EUDInfLoop()():
-        b1 = br1.readbyte()
-        EUDBreakIf(b1 == 0)
-        f_dwwrite_epd(dstp, b1)
-        if EUDIf()(b1 <= 0x7F):
-            f_dwadd_epd(dstp, 0x0D0D0D00)
-        if EUDElse()():
-            b2 = br1.readbyte()
-            f_dwadd_epd(dstp, b2 * 0x100)
-            if EUDIf()(b1 <= 0xDF):  # Encode as 2-byte
-                f_dwadd_epd(dstp, 0x0D0D0000)
-            if EUDElse()():  # 3-byte
-                b3 = br1.readbyte()
-                f_dwadd_epd(dstp, b3 * 0x10000)
-                f_dwadd_epd(dstp, 0x0D000000)
-            EUDEndIf()
-        EUDEndIf()
-        dstp += 1
-    EUDEndInfLoop()
-    return dstp
-
-
-def f_char_addbyte(dstp, b):
-    while len(b) % 4 >= 1:
-        b = b + b"\x0D"
-    DoActions([[SetMemoryEPD(dstp, SetTo, b2i4(b[i:i + 4])), dstp.AddNumber(1)] for i in range(0, len(b), 4)])
-    return dstp
-
-
-def f_char_strbyte(dstp, s, encoding="UTF-8"):
-    b = s.encode(encoding)
-    return f_char_addbyte(dstp, b)
-
-
-def f_char_add1c(dstp, s, encoding="UTF-8"):
-    string = ""
-    color = ""
-    for i, c in enumerate(s):
-        c_ = c.encode(encoding)
-        ci = f_b2i(c_)
-        if ci >= 0x01 and ci <= 0x1F and ci != 0x12 and ci != 0x13:
-            color = c
-            if i - 1 == len(s):
-                string += color
-            continue
-
-        if string == "" and color != "":
-            string += "\x0D\x0D\x0D"
-        string += color + c
-
-        for _ in range(3 - len(c_)):
-            string += "\x0D"
-
-        if color == "":
-            color = "\x0D"
-
-    return f_char_strbyte(dstp, string, encoding)
-
-
-@EUDFunc
-def f_char_adddw(dstp, number):
-    skipper = [Forward() for _ in range(9)]
-    ch = [0] * 10
-
-    for i in range(10):  # Get digits
-        number, ch[i] = f_div(number, 10)
-        if i != 9:
-            EUDJumpIf(number == 0, skipper[i])
-
-    for i in range(9, -1, -1):  # print digits
-        if i != 9:
-            skipper[i] << NextTrigger()
-        f_dwwrite_epd(dstp, ch[i] + b"0"[0] + 0xD0D0D00)
-        dstp += 1
-
-    return dstp
-
-
-@EUDFunc
-def f_char_addptr(dstp, number):
-    ch = [0] * 8
-    for i in range(8):
-        number, ch[i] = f_div(number, 16)
-
-    for i in range(7, -1, -1):
-        if EUDIf()(ch[i] <= 9):
-            f_dwwrite_epd(dstp, ch[i] + b"0"[0] + 0xD0D0D00)
-        if EUDElse()():
-            f_dwwrite_epd(dstp, ch[i] + (b"A"[0] - 10) + 0xD0D0D00)
-        EUDEndIf()
-        dstp += 1
-
-    return dstp
-
-
-def f_cp949_charprint(dstp, *args):
-    arg = FlattenList(args)
-    for arg in args:
-        if isUnproxyInstance(arg, f_str):
-            dstp = f_char_addstr(dstp, arg._value)
-        elif isUnproxyInstance(arg, f_char):
-            dstp = f_char_add1c(dstp, arg._value, encoding="cp949")
-        elif isUnproxyInstance(arg, f_get):
-            SetVariables(arg._value, dstp)
-        elif isUnproxyInstance(arg, bytes):
-            dstp = f_char_addbyte(dstp, arg)
-        elif isUnproxyInstance(arg, str):
-            dstp = f_char_strbyte(dstp, arg, encoding="cp949")
-        elif isUnproxyInstance(arg, DBString):
-            dstp = f_char_addstr(dstp, arg.GetStringMemoryAddr())
-        elif isUnproxyInstance(arg, int):
-            dstp = f_char_addstr(dstp, Db(u2b(str(arg & 0xFFFFFFFF)) + b"\0"))
-        elif isUnproxyInstance(arg, EUDVariable) or IsConstExpr(arg):
-            dstp = f_char_adddw(dstp, arg)
-        elif isUnproxyInstance(arg, hptr):
-            dstp = f_char_addptr(dstp, arg._value)
-        else:
-            raise EPError("unknown parameter type %s given to print_epd." % type(arg))
-    f_dwwrite_epd(dstp, 0)
-    return dstp
-
-
-def f_utf8_charprint(dstp, *args):
-    arg = FlattenList(args)
-    for arg in args:
-        if isUnproxyInstance(arg, str):
-            dstp = f_char_strbyte(dstp, arg)
-        elif isUnproxyInstance(arg, f_s2u):
-            dstp = f_cp949_to_utf8_cpy_epd(dstp, arg._value)
-        elif isUnproxyInstance(arg, f_char):
-            dstp = f_char_add1c(dstp, arg._value)
-        else:
-            dstp = f_cp949_charprint(dstp, arg)
-    f_dwwrite_epd(dstp, 0)
-    return dstp
-
-
-def f_sprintf_epd(dstp, *args):
-    ret = EUDVariable()
-    if EUDIf()(f_is116()):
-        ret << f_cp949_charprint(dstp, *args)
-    if EUDElse()():
-        ret << f_utf8_charprint(dstp, *args)
-    EUDEndIf()
-
-    return ret
-
-
-def f_byteTest(s, e="UTF-8"):
-    s = s.encode(e)
-    while len(s) % 4 >= 1:
-        s += b"\x00"
-    for i in range(math.ceil(len(s) / 4)):
-        print("{}: {}".format(i, s[4 * i : min([4 * (i + 1), len(s)])]))
-
-
-def f_addText_epd(*args):
-    epd << f_sprintf_epd(epd, *args)
-
-
-def f_makeText_epd(*args):
-    f_reset()
-    f_addText_epd(*args)
-
-
-def f_print_epd(*args):
-    f_makeText_epd(*args)
-    f_displayText()
-
-
-def f_printP_epd(player, *args):
-    f_makeText_epd(*args)
-    f_displayTextP(player)
-
-
-def f_printAll_epd(*args):
-    f_makeText_epd(*args)
-    f_displayTextAll()
 
 
 @EUDFunc
@@ -967,32 +846,6 @@ def f_chatepd(line):
         return EPD(0x640B60 + 218 * line)
     else:
         return f_chatepd_EUDVar(line)
-
-
-def f_addChat_epd(*args):
-    chatepd << f_sprintf_epd(chatepd, *args)
-
-
-def f_chatprint_epd(line, *args):
-    if isinstance(line, int) and line == 12:
-        f_printError(EncodePlayer(CurrentPlayer))
-    if EUDIf()(Memory(0x57F1B0, Exactly, f_getcurpl())):
-        chatepd << f_sprintf_epd(f_chatepd(line), *args)
-    EUDEndIf()
-
-
-def f_chatprintP_epd(player, line, *args):
-    if isinstance(line, int) and line == 12:
-        f_printError(player)
-    if EUDIf()(Memory(0x57F1B0, Exactly, player)):
-        chatepd << f_sprintf_epd(f_chatepd(line), *args)
-    EUDEndIf()
-
-
-def f_chatprintAll_epd(line, *args):
-    if isinstance(line, int) and line == 12:
-        f_printError(EncodePlayer(AllPlayers))
-    chatepd << f_sprintf_epd(f_chatepd(line), *args)
 
 
 @EUDFunc
@@ -1127,9 +980,7 @@ def f_setTbl(tblID, offset, length, *args):
 colorArray = Color
 f_getTblPtr = f_tblptr
 f_ct_print = f_utf8_print
-f_ct_print_epd = f_utf8_charprint
 f_cprint = f_sprintf
-f_cprint_epd = f_sprintf_epd
 f_getoldcp = f_getcurpl
 f_setoldcp = f_setcachedcp
 
@@ -1138,5 +989,9 @@ def f_chatAnnouncement(*args):
     f_chatprint(12, *args)
 
 
-def f_chatAnnouncement_epd(*args):
-    f_chatprint_epd(12, *args)
+def f_chatAnnouncementP(player, *args):
+    f_chatprintP(player, 12, *args)
+
+
+def f_chatAnnouncementAll(*args):
+    f_chatprintAll(12, *args)

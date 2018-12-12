@@ -11,7 +11,7 @@ from math import ceil, floor
 
 from eudplib import *
 
-import customText4 as ct
+import customText as ct
 
 # tinytag - an audio meta info reader
 # Copyright (c) 2014-2018 Tom Wallroth

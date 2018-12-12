@@ -3,17 +3,22 @@ import itertools
 from eudplib import *
 from eudplib.eudlib.stringf.rwcommon import br1, bw1
 
-import customText4 as ct
+import customText as ct
 import eudx
-from customText4 import cw
+from customText import cw
 
 """
-texteffect.py 0.3.1 by Artanis
+texteffect.py 0.3.2 by Artanis
+
+## [0.3.2] - 2018-12-12
+### Changed
+- Now use customText 0.4.0
+### Added
+- cp949 option for stat_txt.tbl modification
 
 ## [0.3.1] - 2018-12-03
 ### Fixed
 - Fix keep running f_fadeout(line=12) crash SC
-
 
 ## [0.3.0] - 2018-12-03
 ### A complete code rewrite for customText4 0.3.2
@@ -31,7 +36,6 @@ texteffect.py 0.3.1 by Artanis
 ### Removed
 - ct.f_get is unsupported for now.
 
-
 0.2.1 - reduce trigger amount. increase identifiers from 253 to 113379904.
 0.2.0 - corrected issue: fixed-line display doesn't remove previous text.
         return 0 when effect is over, return 1 when effect is ongoing.
@@ -42,7 +46,7 @@ CP = 0x6509B0
 color_codes = list(range(1, 32))
 color_codes.remove(0x12)  # right align
 color_codes.remove(0x13)  # center align
-color_code = "\x02"
+color_code = b"\x02"
 color_v = EUDVariable()
 
 
@@ -94,17 +98,22 @@ def f_char_cpprint(*args):
     global color_code
     args = FlattenList(args)
     for arg in args:
+        bf = u2utf8
+        if isUnproxyInstance(arg, ct.f_cp949):
+            bf = u2b
+            arg = arg._value
         if isinstance(arg, str):
-            string = ""
+            bytestring = b""
             for char in arg:
-                if ct.f_b2i(u2utf8(char)) in color_codes:
+                char = bf(char)
+                if ct.f_b2i(char) in color_codes:
                     color_code = char
                     continue
-                while len(u2utf8(char)) < 3:
-                    char += "\x0D"
-                string += color_code + char
-            DoActions(color_v.SetNumber(b2i1(u2b(color_code))))
-            ct.f_cpprint(string)
+                while len(char) < 3:
+                    char = char + b"\x0D"
+                bytestring = bytestring + color_code + char
+            DoActions(color_v.SetNumber(b2i1(color_code)))
+            ct.f_cpprint(bytestring)
         elif isUnproxyInstance(arg, ct.f_str):
             br1.seekoffset(arg._value)
             f_char_addstr_cp(arg._value)
@@ -123,6 +132,8 @@ def f_charaddText(*args):
 
 
 def f_charmakeText(*args):
+    global color_code
+    color_code = b"\x02"
     ct.f_updatecpcache()
     DoActions(color_v.SetNumber(2))
     VProc(ct.bufferepd, ct.bufferepd.QueueAssignTo(EPD(CP)))
@@ -165,6 +176,8 @@ id_gen = itertools.cycle(itertools.product(id_codes, repeat=4))
 
 
 def makeeffectText(ids, *args):
+    global color_code
+    color_code = b"\x02"
     ct.f_updatecpcache()
     DoActions(color_v.SetNumber(2))
     VProc(ct.bufferepd, ct.bufferepd.QueueAssignTo(EPD(CP)))
@@ -173,11 +186,13 @@ def makeeffectText(ids, *args):
 
 
 def printEffectOnErrorline(ids, *args):
+    global color_code
+    color_code = b"\x04"
     ct.f_updatecpcache()
     ct.f_printError(CurrentPlayer)
     DoActions(
         [
-            color_v.SetNumber(2),
+            color_v.SetNumber(4),
             SetMemory(0x640B60 + 218 * 12, SetTo, 0),
             SetMemory(CP, SetTo, EPD(0x640B60 + 218 * 12)),
         ]
@@ -358,6 +373,16 @@ def f_update_txtptr():
 
 
 def f_fadein(*args, color=None, wait=1, line=-1, reset=True, timer=None):
+    """Print multiple string / number and apply color from Left To Right
+
+    Keyword arguments:
+    color -- tuple of color codes (default 0x03, 0x04, 0x05, 0x14)
+    wait  -- the imaginary part (default 1)
+    line  -- DisplayText on Fixed Line when (0~10 or EUDVariable),
+            12: print on status line, -1: print as normal DisplayText (default -1)
+    reset -- automatically reset when didn't run for a moment (default True)
+    timer -- tuple of color codes (default: vargs)
+    """
     if color is None:
         color = (0x03, 0x04, 0x05, 0x14)
     if timer is None:
@@ -453,6 +478,16 @@ def f_fadein(*args, color=None, wait=1, line=-1, reset=True, timer=None):
 
 
 def f_fadeout(*args, color=None, wait=1, line=-1, reset=True, timer=None):
+    """Print multiple string / number and apply color from Right To Left
+
+    Keyword arguments:
+    color -- tuple of color codes (default 0x03, 0x04, 0x05, 0x14)
+    wait  -- the imaginary part (default 1)
+    line  -- DisplayText on Fixed Line when (0~10 or EUDVariable),
+            12: print on status line, -1: print as normal DisplayText (default -1)
+    reset -- automatically reset when didn't run for a moment (default True)
+    timer -- tuple of color codes (default: vargs)
+    """
     if color is None:
         color = (0x03, 0x04, 0x05, 0x14)
     if timer is None:
