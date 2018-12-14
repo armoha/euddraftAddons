@@ -1,14 +1,13 @@
 from eudplib import *
 
 t = [Forward() for _ in range(115)]
-j = EUDVariable()
 
 
 def onPluginStart():
     global reph_epd
     reph_epd = f_epdread_epd(EPD(0x6D5CD8))
 
-    s = EUDArray([EPD(x) for x in t])
+    s = EUDArray([EPD(x) + 86 for x in t])
     i = EUDVariable()
     if EUDWhile()(i <= 114):
         k = EUDVariable()
@@ -16,9 +15,9 @@ def onPluginStart():
             EUDBreakIf([i == 114, k >= 15 * 8])
             DoActions(
                 [
-                    SetMemoryEPD(s[i] + 86 + k, SetTo, reph_epd + j),
+                    SetMemoryEPD(s[i] + k, SetTo, reph_epd),
+                    reph_epd.AddNumber(1),
                     k.AddNumber(8),
-                    j.AddNumber(1),
                 ]
             )
         EUDEndWhile()
@@ -27,7 +26,7 @@ def onPluginStart():
 
 
 def beforeTriggerExec():
-    dummy = j.getValueAddr()
+    dummy = reph_epd.getValueAddr() - 8
     for i in range(114):
         t[i] << RawTrigger(actions=[SetMemory(dummy, SetTo, 0) for _ in range(64)])
     t[114] << RawTrigger(actions=[SetMemory(dummy, SetTo, 0) for _ in range(15)])
