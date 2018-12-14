@@ -1,39 +1,33 @@
 from eudplib import *
 
-n = 29244 // 4 - 1
-noAir = Forward()
-isFinish = Forward()
+t = [Forward() for _ in range(115)]
+j = EUDVariable()
 
 
 def onPluginStart():
+    global reph_epd
     reph_epd = f_epdread_epd(EPD(0x6D5CD8))
-    DoActions([
-        SetMemory(noAir + 16, SetTo, reph_epd),  # Act + 16: group/player
-        SetMemory(isFinish + 8, SetTo, reph_epd + n),  # Con + 8: amount
-    ])
+
+    s = EUDArray([EPD(x) for x in t])
+    i = EUDVariable()
+    if EUDWhile()(i <= 114):
+        k = EUDVariable()
+        if EUDWhile()(k <= 63 * 8):
+            EUDBreakIf([i == 114, k >= 15 * 8])
+            DoActions(
+                [
+                    SetMemoryEPD(s[i] + 86 + k, SetTo, reph_epd + j),
+                    k.AddNumber(8),
+                    j.AddNumber(1),
+                ]
+            )
+        EUDEndWhile()
+        DoActions([i.AddNumber(1), k.SetNumber(0)])
+    EUDEndWhile()
 
 
 def beforeTriggerExec():
-    trg = [Forward() for i in range(3)]
-
-    trg[0] << RawTrigger(
-        actions=[
-            noAir << SetDeaths(0xBABE, SetTo, 0, 0),
-            SetMemory(noAir + 16, Add, 1)
-        ]
-    )
-
-    trg[1] << RawTrigger(
-        nextptr=trg[0],
-        conditions=[
-            isFinish << Memory(noAir + 16, Exactly, 0xEDAC)
-        ],
-        actions=SetNextPtr(trg[1], trg[2])
-    )
-
-    trg[2] << RawTrigger(
-        actions=[
-            SetMemory(noAir + 16, Subtract, n),
-            SetNextPtr(trg[1], trg[0])
-        ]
-    )
+    dummy = j.getValueAddr()
+    for i in range(114):
+        t[i] << RawTrigger(actions=[SetMemory(dummy, SetTo, 0) for _ in range(64)])
+    t[114] << RawTrigger(actions=[SetMemory(dummy, SetTo, 0) for _ in range(15)])
