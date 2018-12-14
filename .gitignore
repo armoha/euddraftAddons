@@ -4,6 +4,8 @@ VERSION
 *.txt
 *.zip
 
+data/*
+
 # lib
 lib/eudplib
 lib/ctypes
@@ -17,6 +19,7 @@ datadumper.py
 eudTurbo.py
 noAirCollision.py
 unpatcher.py
+unlimiter.py
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
