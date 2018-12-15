@@ -16,6 +16,7 @@ texteffect.py 0.3.2 by Artanis
 - Now use customText 0.4.0
 ### Added
 - cp949 option for stat_txt.tbl modification
+- s2u option for concatenate unit name
 
 ## [0.3.1] - 2018-12-03
 ### Fixed

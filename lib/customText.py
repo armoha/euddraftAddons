@@ -10,6 +10,10 @@ from eudplib.eudlib.stringf.rwcommon import br1, bw1
 """
 customText 0.4.0 by Artanis
 
+0.4.1
+- Fixed CPString is printed twice.
+- Added parameter nextptr in CPString.
+
 0.4.0
 - Integrated customText3 and customText4.
 - Added predicting (string offset % 4) and fitting to 0.
@@ -65,16 +69,20 @@ def onInit():
             outindex += len(s) + 1
         bufferoffset = stroffset[strmap._dataindextb[strBuffer - 1]]
         if bufferoffset % 4 != 2:
-            strmap._datatb[strmap._dataindextb[strBuffer - 2]] = b"@2+4n!"[0:4 - bufferoffset % 4]
+            strmap._datatb[strmap._dataindextb[strBuffer - 2]] = b"@2+4n!"[
+                0 : 4 - bufferoffset % 4
+            ]
+            strmap._capacity -= 2 + bufferoffset % 4
             ApplyStringMap(chkt)
 
     RegisterCreatePayloadCallback(_fill)
 
     def _alert():
         STR = chkt.getsection("STR")
-        buffer_ptr = b2i2(STR[2 * strBuffer:2 * strBuffer + 2])
+        buffer_ptr = b2i2(STR[2 * strBuffer : 2 * strBuffer + 2])
         if buffer_ptr % 4 >= 1:
             raise EPError("Parity mismatched")
+
     atexit.register(_alert)
 
     return strBuffer
@@ -96,12 +104,67 @@ def _s2b(x):
     return x
 
 
+STRptr, STRepd = EUDCreateVariables(2)
+add_STRptr, add_STRepd, write_bufferptr, write_bufferepd, reset_buffer = [
+    Forward() for _ in range(5)
+]
+TBLptr, TBLepd = EUDCreateVariables(2)
+add_TBLptr, add_TBLepd = Forward(), Forward()
+_initTbl = EUDLightVariable(0)
+_tbl_start, _tbl_end, _tbl_return = [Forward() for _ in range(3)]
+
+
+@EUDFunc
+def f_strptr(strID):  # getStringPtr
+    r, m = f_div(strID, 2)
+    RawTrigger(actions=add_STRepd << r.AddNumber(0))
+    ret = f_wread_epd(r, m * 2)  # strTable_epd + r
+    RawTrigger(actions=add_STRptr << ret.AddNumber(0))
+    EUDReturn(ret)  # strTable_ptr + strOffset
+
+
+def f_init():
+    SetVariables([STRptr, STRepd], f_dwepdread_epd(EPD(0x5993D4)))
+    DoActions(
+        [
+            cp.SetNumber(f_dwread_epd(EPD(0x57F1B0))),
+            SetMemory(add_STRptr + 20, SetTo, STRptr),
+            SetMemory(add_STRepd + 20, SetTo, STRepd),
+        ]
+    )
+    newptr = f_strptr(strBuffer)  # STRptr + newptr
+    newepd = EPD(newptr)
+    DoActions(
+        [
+            SetMemory(write_bufferptr + 20, SetTo, newptr),
+            SetMemory(write_bufferepd + 20, SetTo, newepd),
+            bufferepd.SetNumber(newepd),
+            soundBufferptr.SetNumber(newptr),
+        ]
+    )
+    f_reset()  # prevent Forward Not initialized
+    _never = Forward()
+    EUDJump(_never)
+    f_TBLinit()
+    reset_buffer << RawTrigger(
+        actions=[
+            write_bufferptr << ptr.SetNumber(0),
+            write_bufferepd << epd.SetNumber(0),
+        ]
+    )
+    _never << NextTrigger()
+
+
+EUDOnStart(f_init)
+chatptr, chatepd = EUDCreateVariables(2)
+
+
 class CPString:
     """
     store String in SetDeaths Actions, easy to concatenate
     """
 
-    def __init__(self, content=None):
+    def __init__(self, content=None, nextptr=None):
         """Constructor for CPString
         :param content: Initial CPString content / capacity. Capacity of
             CPString is determined by size of this. If content is integer, then
@@ -119,15 +182,14 @@ class CPString:
         self.length = len(content) // 4
         self.trigger = list()
         self.valueAddr = list()
-        actions = FlattenList(
+        actions =[
             [
-                [
-                    SetDeaths(CurrentPlayer, SetTo, f_b2i(self.content[i : i + 4]), 0),
-                    SetMemory(CP, Add, 1),
-                ]
-                for i in range(0, len(self.content), 4)
+                SetDeaths(CurrentPlayer, SetTo, f_b2i(self.content[i : i + 4]), 0),
+                SetMemory(CP, Add, 1),
             ]
-        )
+            for i in range(0, len(self.content), 4)
+        ]
+        actions = FlattenList(actions)
         for i in range(0, len(actions), 64):
             t = RawTrigger(actions=actions[i : i + 64])
             self.trigger.append(t)
@@ -137,6 +199,8 @@ class CPString:
                     for k in range(min(32, (len(actions) - i) // 2))
                 ]
             )
+        if nextptr is not None:
+            self.trigger[-1]._nextptr = nextptr
 
     def GetVTable(self):
         return self.trigger[0]
@@ -507,14 +571,14 @@ def f_cpprint(*args):
             arg = u2b(arg._value)
         elif isUnproxyInstance(arg, int):
             arg = u2b(str(arg & 0xFFFFFFFF))
+        _next = Forward()
         if isUnproxyInstance(arg, bytes):
             key = _s2b(arg)
             if key not in _constcpstr_dict:
-                _constcpstr_dict[key] = CPString(arg)
+                _constcpstr_dict[key] = CPString(arg, _next)
             arg = _constcpstr_dict[key]
         if isUnproxyInstance(arg, CPString):
             delta += arg.length
-            _next = Forward()
             RawTrigger(
                 nextptr=arg.GetVTable(),
                 actions=SetMemory(arg.GetNextPtrMemory(), SetTo, _next),
@@ -688,57 +752,6 @@ def f_playSoundAll(*args):
     f_setlocalcp()
     f_playSound(*args)
     f_setcachedcp()
-
-
-STRptr, STRepd = EUDCreateVariables(2)
-add_STRptr, add_STRepd, write_bufferptr, write_bufferepd, reset_buffer = [
-    Forward() for _ in range(5)
-]
-
-
-@EUDFunc
-def f_strptr(strID):  # getStringPtr
-    r, m = f_div(strID, 2)
-    RawTrigger(actions=add_STRepd << r.AddNumber(0))
-    ret = f_wread_epd(r, m * 2)  # strTable_epd + r
-    RawTrigger(actions=add_STRptr << ret.AddNumber(0))
-    EUDReturn(ret)  # strTable_ptr + strOffset
-
-
-def f_init():
-    SetVariables([STRptr, STRepd], f_dwepdread_epd(EPD(0x5993D4)))
-    DoActions(
-        [
-            cp.SetNumber(f_dwread_epd(EPD(0x57F1B0))),
-            SetMemory(add_STRptr + 20, SetTo, STRptr),
-            SetMemory(add_STRepd + 20, SetTo, STRepd),
-        ]
-    )
-    newptr = f_strptr(strBuffer)  # STRptr + newptr
-    newepd = EPD(newptr)
-    DoActions(
-        [
-            SetMemory(write_bufferptr + 20, SetTo, newptr),
-            SetMemory(write_bufferepd + 20, SetTo, newepd),
-            bufferepd.SetNumber(newepd),
-            soundBufferptr.SetNumber(newptr),
-        ]
-    )
-    f_reset()  # prevent Forward Not initialized
-    _never = Forward()
-    EUDJump(_never)
-    reset_buffer << RawTrigger(
-        actions=[
-            write_bufferptr << ptr.SetNumber(0),
-            write_bufferepd << epd.SetNumber(0),
-        ]
-    )
-    f_TBLinit()
-    _never << NextTrigger()
-
-
-EUDOnStart(f_init)
-chatptr, chatepd = EUDCreateVariables(2)
 
 
 def f_reset():  # ptr, epd를 스트링 시작 주소로 설정합니다.
@@ -930,28 +943,22 @@ def f_dbstr_print2(dst, length, *args):
     return dst
 
 
-TBL_ptr, TBL_epd = EUDCreateVariables(2)
-AddTBL_ptr, AddTBL_epd = Forward(), Forward()
-_initTbl = EUDLightVariable(0)
-_tbl_start, _tbl_end, _tbl_return = [Forward() for _ in range(3)]
-
-
 @EUDFunc
 def f_tblptr(tblID):
     r, m = f_div(tblID, 2)
-    RawTrigger(actions=AddTBL_epd << r.AddNumber(0))
+    RawTrigger(actions=add_TBLepd << r.AddNumber(0))
     ret = f_wread_epd(r, m * 2)  # strTable_epd + r
-    RawTrigger(actions=AddTBL_ptr << ret.AddNumber(0))
+    RawTrigger(actions=add_TBLptr << ret.AddNumber(0))
     return ret  # tbl_ptr + tblOffset
 
 
 def f_TBLinit():
     _tbl_start << NextTrigger()
-    SetVariables([TBL_ptr, TBL_epd], f_dwepdread_epd(EPD(0x6D5A30)))
+    SetVariables([TBLptr, TBLepd], f_dwepdread_epd(EPD(0x6D5A30)))
     DoActions(
         [
-            SetMemory(AddTBL_epd + 20, SetTo, TBL_epd),
-            SetMemory(AddTBL_ptr + 20, SetTo, TBL_ptr),
+            SetMemory(add_TBLepd + 20, SetTo, TBLepd),
+            SetMemory(add_TBLptr + 20, SetTo, TBLptr),
         ]
     )
 
