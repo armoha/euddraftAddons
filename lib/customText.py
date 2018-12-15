@@ -8,11 +8,12 @@ from eudplib.core.mapdata.stringmap import ApplyStringMap, strmap
 from eudplib.eudlib.stringf.rwcommon import br1, bw1
 
 """
-customText 0.4.0 by Artanis
+customText 0.4.1 by Artanis
 
 0.4.1
 - Fixed CPString is printed twice.
 - Added parameter nextptr in CPString.
+- Fixed f_str, f_strepd insert null byte at end.
 
 0.4.0
 - Integrated customText3 and customText4.
@@ -293,7 +294,7 @@ class CPByteWriter:
 cw = CPByteWriter()
 ptr, epd, cp = EUDCreateVariables(3)
 player_colors = "\x08\x0E\x0F\x10\x11\x15\x16\x17\x18\x19\x1B\x1C\x1D\x1E\x1F"
-Color = EUDArray([EPD(Db(u2b(x))) for x in player_colors])
+Color = EUDArray([EPD(Db(u2b(c) + b"\0")) for c in player_colors])
 _cpcache = EUDVariable()
 
 
@@ -425,10 +426,10 @@ def f_color(i):  # f_dbstr_addstr(Color[i])
 
 
 def Name(x):
-    if x == CurrentPlayer:
-        x = _cpcache
     if isUnproxyInstance(x, type(P1)):
         x = EncodePlayer(x)
+        if x == EncodePlayer(CurrentPlayer):
+            x = _cpcache
     return f_str(0x57EEEB + 36 * x)
 
 
@@ -457,8 +458,8 @@ def f_addstr_cp(src):
     br1.seekoffset(src)
     if EUDInfLoop()():
         SetVariables(b, br1.readbyte())
-        cw.writebyte(b)
         EUDBreakIf(b == 0)
+        cw.writebyte(b)
     EUDEndInfLoop()
 
     cw.flushdword()
@@ -474,8 +475,8 @@ def f_addstr_cp_epd(epd):
     br1.seekepd(epd)
     if EUDInfLoop()():
         SetVariables(b, br1.readbyte())
-        cw.writebyte(b)
         EUDBreakIf(b == 0)
+        cw.writebyte(b)
     EUDEndInfLoop()
 
     cw.flushdword()
