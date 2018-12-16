@@ -183,7 +183,7 @@ class CPString:
         self.length = len(content) // 4
         self.trigger = list()
         self.valueAddr = list()
-        actions =[
+        actions = [
             [
                 SetDeaths(CurrentPlayer, SetTo, f_b2i(self.content[i : i + 4]), 0),
                 SetMemory(CP, Add, 1),
@@ -200,8 +200,18 @@ class CPString:
                     for k in range(min(32, (len(actions) - i) // 2))
                 ]
             )
+        self._nextptr = None
         if nextptr is not None:
             self.trigger[-1]._nextptr = nextptr
+            self._nextptr = nextptr
+
+    def Display(self, action=[]):
+        _next = Forward()
+        RawTrigger(
+            nextptr=self.trigger[0],
+            actions=[action] + [SetNextPtr(self.trigger[-1], _next)]
+        )
+        _next << RawTrigger(actions=SetNextPtr(self.trigger[-1], self._nextptr))
 
     def GetVTable(self):
         return self.trigger[0]
@@ -581,10 +591,10 @@ def f_cpprint(*args):
         if isUnproxyInstance(arg, CPString):
             delta += arg.length
             RawTrigger(
-                nextptr=arg.GetVTable(),
-                actions=SetMemory(arg.GetNextPtrMemory(), SetTo, _next),
+                nextptr=arg.trigger[0],
+                actions=SetNextPtr(arg.trigger[-1], _next)
             )
-            _next << NextTrigger()
+            _next << RawTrigger(actions=SetNextPtr(arg.trigger[-1], arg._nextptr))
         elif isUnproxyInstance(arg, f_str):
             f_addstr_cp(arg._value)
         elif isUnproxyInstance(arg, f_s2u):
