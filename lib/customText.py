@@ -8,7 +8,10 @@ from eudplib.core.mapdata.stringmap import ApplyStringMap, strmap
 from eudplib.eudlib.stringf.rwcommon import br1, bw1
 
 """
-customText 0.4.1 by Artanis
+customText 0.4.2 by Artanis
+
+0.4.2
+- Fixed CPString's nextptr didn't restored correctly
 
 0.4.1
 - Fixed CPString is printed twice.
