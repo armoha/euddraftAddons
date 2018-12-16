@@ -11,7 +11,8 @@ from eudplib.eudlib.stringf.rwcommon import br1, bw1
 customText 0.4.2 by Artanis
 
 0.4.2
-- Fixed CPString's nextptr didn't restored correctly
+- Fixed CPString's nextptr didn't restored correctly.
+- Added Display method to CPString.
 
 0.4.1
 - Fixed CPString is printed twice.
