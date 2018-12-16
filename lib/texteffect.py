@@ -418,7 +418,7 @@ def f_fadein(*args, color=None, wait=1, line=-1, reset=True, timer=None):
     line  -- DisplayText on Fixed Line when (0~10 or EUDVariable),
             12: print on status line, -1: print as normal DisplayText (default -1)
     reset -- automatically reset when didn't run for a moment (default True)
-    timer -- tuple of color codes (default: vargs)
+    timer -- internal timer and identifier (default: vargs)
     """
     if color is None:
         color = (0x03, 0x04, 0x05, 0x14)
@@ -523,7 +523,7 @@ def f_fadeout(*args, color=None, wait=1, line=-1, reset=True, timer=None):
     line  -- DisplayText on Fixed Line when (0~10 or EUDVariable),
             12: print on status line, -1: print as normal DisplayText (default -1)
     reset -- automatically reset when didn't run for a moment (default True)
-    timer -- tuple of color codes (default: vargs)
+    timer -- internal timer and identifier (default: vargs)
     """
     if color is None:
         color = (0x03, 0x04, 0x05, 0x14)
