@@ -1,15 +1,19 @@
 import itertools
 
+import customText as ct
 import eudplib.eudlib.stringf.cputf8 as cputf
+from customText import cw
 from eudplib import *
 from eudplib.eudlib.stringf.rwcommon import br1
 
-import customText as ct
-import eudx
-from customText import cw
-
 """
-texteffect.py 0.3.2 by Artanis
+texteffect.py 0.3.4 by Artanis
+
+## [0.3.4] - 2019-01-18
+### Fixed
+- f_fadein, f_fadeout used (arg,) as timer when len(args) == 1.
+- Now use MemoryX and SetDeathsX from eudx.py or euddraft 0.8.3.0+.
+- f_fadein, f_fadeout issued error with color code(s) and no content.
 
 ## [0.3.2] - 2018-12-12
 ### Changed
@@ -43,6 +47,11 @@ texteffect.py 0.3.2 by Artanis
         return 0 when effect is over, return 1 when effect is ongoing.
 0.1.0 - inital release.
 """
+
+try:
+    MemoryX
+except (NameError):
+    from eudx import MemoryX, SetDeathsX
 
 CP = 0x6509B0
 color_codes = list(range(1, 32))
@@ -148,6 +157,8 @@ def f_char_cpprint(*args):
                     char = char + b"\x0D"
                 bytestring = bytestring + color_code + char
             DoActions(color_v.SetNumber(b2i1(color_code)))
+            if not bytestring:
+                bytestring = color_code + b"\x0D\x0D\x0D"
             ct.f_cpprint(bytestring)
         elif isUnproxyInstance(arg, ct.f_str):
             br1.seekoffset(arg._value)
@@ -266,7 +277,7 @@ def _remove(id1, id2):
         _even = 0x640C3C + 436 * i
         RawTrigger(
             conditions=[
-                eudx.MemoryX(_even - 4, AtLeast, 1, 0xFF0000),
+                MemoryX(_even - 4, AtLeast, 1, 0xFF0000),
                 even[i] << Memory(_even, Exactly, -1),
             ],
             actions=[txtPtr.SetNumber(2 * i + 1), SetMemory(_even, SetTo, 0)],
@@ -336,7 +347,7 @@ def R2L(color, timer, color_dict={}):
                 RawTrigger(
                     conditions=_cpbelowbuffer.Exactly(0),
                     actions=[
-                        eudx.SetDeathsX(CurrentPlayer, SetTo, c, 0, 0xFF),
+                        SetDeathsX(CurrentPlayer, SetTo, c, 0, 0xFF),
                         SetMemory(CP, Subtract, 1),
                     ],
                 )
@@ -409,12 +420,15 @@ def f_update_txtptr():
     EUDEndIf()
 
 
+CurrentPlayerOnly = True
+
+
 def f_fadein(*args, color=None, wait=1, line=-1, reset=True, timer=None):
     """Print multiple string / number and apply color from Left To Right
 
     Keyword arguments:
     color -- tuple of color codes (default 0x03, 0x04, 0x05, 0x14)
-    wait  -- the imaginary part (default 1)
+    wait  -- time interval between effect (default 1)
     line  -- DisplayText on Fixed Line when (0~10 or EUDVariable),
             12: print on status line, -1: print as normal DisplayText (default -1)
     reset -- automatically reset when didn't run for a moment (default True)
@@ -423,11 +437,16 @@ def f_fadein(*args, color=None, wait=1, line=-1, reset=True, timer=None):
     if color is None:
         color = (0x03, 0x04, 0x05, 0x14)
     if timer is None:
-        timer = args
+        if len(args) == 1:
+            timer = args[0]
+        else:
+            timer = args
     key = timer
     add_timer(key)
     timer, counter, ids = timer_dict[key], counter_dict[key], id_dict[key]
     if isinstance(line, EUDVariable) or (line <= 10 and line >= 0) or line == -1:
+        if CurrentPlayerOnly:
+            EUDJumpIfNot(Memory(0x6509B0, Exactly, ct.cp), _end)
         makeeffectText(ids, *args)
         VProc(
             ct.bufferepd,
@@ -437,6 +456,8 @@ def f_fadein(*args, color=None, wait=1, line=-1, reset=True, timer=None):
             ],
         )
     elif line == 12:
+        if CurrentPlayerOnly:
+            EUDJumpIfNot(Memory(0x6509B0, Exactly, ct.cp), _end)
         printEffectOnErrorline(ids, *args)
         DoActions(SetMemory(CP, SetTo, EPD(0x640B60 + 218 * 12) + 3 - len(color)))
     else:
@@ -511,6 +532,7 @@ def f_fadein(*args, color=None, wait=1, line=-1, reset=True, timer=None):
         if EUDIf()(displayedTxtPtr <= 10):
             VProc(prevTxtPtr, [prevTxtPtr.QueueAssignTo(EPD(TXTPTR))])
         EUDEndIf()
+    _end << NextTrigger()
     return ret
 
 
@@ -519,7 +541,7 @@ def f_fadeout(*args, color=None, wait=1, line=-1, reset=True, timer=None):
 
     Keyword arguments:
     color -- tuple of color codes (default 0x03, 0x04, 0x05, 0x14)
-    wait  -- the imaginary part (default 1)
+    wait  -- time interval between effect (default 1)
     line  -- DisplayText on Fixed Line when (0~10 or EUDVariable),
             12: print on status line, -1: print as normal DisplayText (default -1)
     reset -- automatically reset when didn't run for a moment (default True)
@@ -528,13 +550,20 @@ def f_fadeout(*args, color=None, wait=1, line=-1, reset=True, timer=None):
     if color is None:
         color = (0x03, 0x04, 0x05, 0x14)
     if timer is None:
-        timer = args
+        if len(args) == 1:
+            timer = args[0]
+        else:
+            timer = args
     key = timer
     add_timer(key)
     timer, counter, ids = timer_dict[key], counter_dict[key], id_dict[key]
     if isinstance(line, EUDVariable) or (line <= 10 and line >= 0) or line == -1:
+        if CurrentPlayerOnly:
+            EUDJumpIfNot(Memory(0x6509B0, Exactly, ct.cp), _end)
         makeeffectText(ids, *args)
     elif line == 12:
+        if CurrentPlayerOnly:
+            EUDJumpIfNot(Memory(0x6509B0, Exactly, ct.cp), _end)
         printEffectOnErrorline(ids, *args)
     else:
         DoActions(color_v.SetNumber(2))
@@ -604,4 +633,5 @@ def f_fadeout(*args, color=None, wait=1, line=-1, reset=True, timer=None):
         if EUDIf()(displayedTxtPtr <= 10):
             VProc(prevTxtPtr, [prevTxtPtr.QueueAssignTo(EPD(TXTPTR))])
         EUDEndIf()
+    _end << NextTrigger()
     return ret
