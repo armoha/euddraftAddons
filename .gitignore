@@ -3,6 +3,7 @@ VERSION
 *.exe
 *.txt
 *.zip
+.vscode
 
 data/*
 
