@@ -4,11 +4,19 @@ import math
 
 import eudplib.eudlib.stringf.cputf8 as cputf
 from eudplib import *
+from eudplib.core.curpl import _curpl_checkcond, _curpl_var
 from eudplib.core.mapdata.stringmap import ApplyStringMap, strmap
 from eudplib.eudlib.stringf.rwcommon import br1, bw1
 
 """
-customText 0.4.2 by Artanis
+customText 0.4.4 by Artanis
+
+0.4.4
+- Fixed bug with f_chatprint.
+
+0.4.3
+- Fixed soundbufferPtr to use soundbuffer correctly.
+- Avoid CP cache miss.
 
 0.4.2
 - Fixed CPString's nextptr didn't restored correctly.
@@ -95,6 +103,8 @@ def onInit():
 
 strBuffer = onInit()
 CP = 0x6509B0
+soundBuffer = GetStringIndex("_" * 64)
+soundBufferptr = EUDVariable()
 
 
 def f_b2i(x):
@@ -128,6 +138,27 @@ def f_strptr(strID):  # getStringPtr
     EUDReturn(ret)  # strTable_ptr + strOffset
 
 
+def AddCurrentPlayer(p):
+    p = EncodePlayer(p)
+    return [
+        _curpl_var.AddNumber(p),
+        SetMemory(_curpl_checkcond + 8, Add, p),
+        SetMemory(CP, Add, p),
+    ]
+
+
+def f_addcurpl(cp):
+    DoActions(AddCurrentPlayer(cp))
+
+
+def _addcpcache(p):
+    p = EncodePlayer(p)
+    return [
+        _curpl_var.AddNumber(p),
+        SetMemory(_curpl_checkcond + 8, Add, p),
+    ]
+
+
 def f_init():
     SetVariables([STRptr, STRepd], f_dwepdread_epd(EPD(0x5993D4)))
     DoActions(
@@ -144,7 +175,7 @@ def f_init():
             SetMemory(write_bufferptr + 20, SetTo, newptr),
             SetMemory(write_bufferepd + 20, SetTo, newepd),
             bufferepd.SetNumber(newepd),
-            soundBufferptr.SetNumber(newptr),
+            soundBufferptr.SetNumber(f_strptr(soundBuffer)),
         ]
     )
     f_reset()  # prevent Forward Not initialized
@@ -184,7 +215,7 @@ class CPString:
         else:
             raise EPError("Unexpected type for CPString: {}".format(type(content)))
 
-        self.length = len(content) // 4
+        self.length = len(self.content) // 4
         self.trigger = list()
         self.valueAddr = list()
         actions = [
@@ -193,7 +224,7 @@ class CPString:
                 SetMemory(CP, Add, 1),
             ]
             for i in range(0, len(self.content), 4)
-        ]
+        ] + _addcpcache(self.length)
         actions = FlattenList(actions)
         for i in range(0, len(actions), 64):
             t = RawTrigger(actions=actions[i : i + 64])
@@ -240,6 +271,7 @@ class CPString:
                     SetMemory(self.valueAddr[i // 4] + 4, SetTo, 0x072D0000, 0),
                 ]
             )
+        ret.append(_addcpcache(len(content) // 4))
         if len(content) % (4 * 32) >= 1:
             ret.append(
                 SetMemory(
@@ -298,7 +330,7 @@ class CPByteWriter:
                 )
         DoActions(
             [
-                SetMemory(CP, Add, 1),
+                AddCurrentPlayer(1),
                 self._suboffset.SetNumber(0),
                 [self._b[i].SetNumber(b2i1(b"\r")) for i in range(4)],
             ]
@@ -314,25 +346,12 @@ _cpcache = EUDVariable()
 
 @EUDFunc
 def f_updatecpcache():
-    _cpcachematch = Forward()
-    if EUDIfNot()([_cpcachematch << Memory(CP, Exactly, 0)]):
-        DoActions(_cpcache.SetNumber(0))
-        for i in range(31, -1, -1):
-            RawTrigger(
-                conditions=Memory(CP, AtLeast, 2 ** i),
-                actions=[SetMemory(CP, Subtract, 2 ** i), _cpcache.AddNumber(2 ** i)],
-            )
-        DoActions(
-            [
-                SetMemory(CP, SetTo, _cpcache),
-                SetMemory(_cpcachematch + 8, SetTo, _cpcache),
-            ]
-        )
-    EUDEndIf()
+    _cpcache << f_getcurpl()
 
 
+@EUDFunc
 def f_setcachedcp():
-    VProc(_cpcache, [_cpcache.QueueAssignTo(EPD(CP))])
+    f_setcurpl(_cpcache)
 
 
 def f_setlocalcp():
@@ -558,7 +577,7 @@ def f_addptr_cp(number):
                 )
             DoActions(
                 [
-                    SetMemory(CP, Add, 1),
+                    AddCurrentPlayer(1),
                     [
                         SetDeaths(CurrentPlayer, SetTo, b2i4(b"0000"), 0)
                         if i == 16
@@ -698,7 +717,7 @@ bufferepd = EUDVariable()
 
 def f_makeText(*args):
     f_updatecpcache()
-    VProc(bufferepd, [bufferepd.QueueAssignTo(EPD(CP))])
+    f_setcurpl(bufferepd)
     f_addText(*args)
 
 
@@ -707,7 +726,7 @@ def f_displayText():
     DoActions(DisplayText(strBuffer))
 
 
-@EUDFunc
+@EUDTypedFunc([TrgPlayer])
 def f_displayTextP(player):
     DoActions([SetMemory(0x6509B0, SetTo, player), DisplayText(strBuffer)])
     f_setcachedcp()
@@ -716,7 +735,8 @@ def f_displayTextP(player):
 @EUDFunc
 def f_displayTextAll():
     f_setlocalcp()
-    VProc(_cpcache, [_cpcache.QueueAssignTo(EPD(CP)), DisplayText(strBuffer)])
+    DoActions(DisplayText(strBuffer))
+    f_setcachedcp()
 
 
 def f_print(*args):
@@ -734,30 +754,14 @@ def f_printAll(*args):
     f_displayTextAll()
 
 
-def _CGFW(exprf, retn):
-    rets = [ExprProxy(None) for _ in range(retn)]
-
-    def _():
-        vals = exprf()
-        for ret, val in zip(rets, vals):
-            ret._value = val
-
-    EUDOnStart(_)
-    return rets
-
-
-soundBuffer = _CGFW(lambda: [GetStringIndex("_" * 64)], 1)[0]
-soundBufferptr = EUDVariable()
-
-
 def f_playSound(*args):
-    f_sprintf(soundBufferptr, *args)
+    f_cp949_print(soundBufferptr, *args)
     DoActions(PlayWAV(soundBuffer))
 
 
 def f_playSoundP(player, *args):
     f_updatecpcache()
-    DoActions(SetMemory(CP, SetTo, player))
+    DoActions(SetMemory(CP, SetTo, EncodePlayer(player)))
     f_playSound(*args)
     f_setcachedcp()
 
@@ -825,41 +829,6 @@ def f_chatdst(line):
         return f_chatdst_EUDVar(line)
 
 
-def f_addChat(*args):
-    chatptr << f_sprintf(chatptr, *args)
-
-
-def f_chatprint(line, *args):
-    if isinstance(line, int):
-        if line >= 0 and line <= 10:
-            DoActions([SetMemory(0x640B58, SetTo, line), DisplayText(" ")])
-        elif line == 12:
-            f_printError(EncodePlayer(CurrentPlayer))
-    if EUDIf()(Memory(0x57F1B0, Exactly, f_getcurpl())):
-        chatptr << f_sprintf(f_chatdst(line), *args)
-    EUDEndIf()
-
-
-def f_chatprintP(player, line, *args):
-    if isinstance(line, int):
-        if line >= 0 and line <= 10:
-            DoActions([SetMemory(0x640B58, SetTo, line), DisplayText(" ")])
-        elif line == 12:
-            f_printError(player)
-    if EUDIf()(Memory(0x57F1B0, Exactly, player)):
-        chatptr << f_sprintf(f_chatdst(line), *args)
-    EUDEndIf()
-
-
-def f_chatprintAll(line, *args):
-    if isinstance(line, int):
-        if line >= 0 and line <= 10:
-            DoActions([SetMemory(0x640B58, SetTo, line), DisplayText(" ")])
-        elif line == 12:
-            f_printError(EncodePlayer(AllPlayers))
-    chatptr << f_sprintf(f_chatdst(line), *args)
-
-
 @EUDFunc
 def f_chatepd_EUDVar(line):
     r, m = f_div(line, 2)
@@ -875,6 +844,43 @@ def f_chatepd(line):
         return EPD(0x640B60 + 218 * line)
     else:
         return f_chatepd_EUDVar(line)
+
+
+def f_addChat(*args):
+    f_addText(*args)
+
+
+def _chatprint_prep(*args, player=None, line=None, acts=[]):
+    if isinstance(line, int):
+        if line >= 0 and line <= 10:
+            DoActions([acts] + [SetMemory(0x640B58, SetTo, line), DisplayText(" ")])
+        elif line == 12:
+            f_printError(player)
+    f_setcurpl(f_chatepd(line))
+    if isinstance(line, int) and line % 2 == 1:
+        args = ("\x0D\x0D\x0D\x0D") + args
+    chatepd << f_cpprint(*args)
+    f_setcachedcp()
+
+
+def f_chatprint(line, *args):
+    if EUDIf()(Memory(0x57F1B0, Exactly, f_getcurpl())):
+        f_updatecpcache()
+        _chatprint_prep(*args, player=CurrentPlayer, line=line)
+    EUDEndIf()
+
+
+def f_chatprintP(player, line, *args):
+    if EUDIf()(Memory(0x57F1B0, Exactly, player)):
+        f_updatecpcache()
+        _chatprint_prep(*args, player=player, line=line, acts=SetMemory(CP, SetTo, player))
+    EUDEndIf()
+
+
+def f_chatprintAll(line, *args):
+    f_updatecpcache()
+    f_setlocalcp()
+    _chatprint_prep(*args, player=AllPlayers, line=line)
 
 
 @EUDFunc
@@ -997,15 +1003,6 @@ def f_setTbl(tblID, offset, length, *args):
     _next << NextTrigger()
     dst = f_tblptr(tblID) + offset
     f_dbstr_print2(dst, length, *args)
-
-
-# legacy
-colorArray = Color
-f_getTblPtr = f_tblptr
-f_ct_print = f_utf8_print
-f_cprint = f_sprintf
-f_getoldcp = f_getcurpl
-f_setoldcp = f_setcachedcp
 
 
 def f_chatAnnouncement(*args):
