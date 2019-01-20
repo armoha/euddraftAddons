@@ -1,9 +1,118 @@
 # -*- coding: utf-8 -*-
-from eudplib import *
-from struct import unpack
-from math import ceil
 import re
 from itertools import product
+from math import ceil
+from struct import unpack
+
+from eudplib import *
+
+try:
+    from customText import cw
+except (ImportError):
+    class CPByteWriter:
+        """Write byte by byte"""
+
+        def __init__(self):
+            self._suboffset = EUDVariable()
+            self._b = [EUDLightVariable(b2i1(b"\r")) for _ in range(4)]
+
+        @EUDMethod
+        def writebyte(self, byte):
+            """Write byte to current position.
+
+            Write a byte to current position of EUDByteWriter. Writer will advance
+            by 1 byte.
+
+            .. note::
+                Bytes could be buffered before written to memory. After you
+                finished using writebytes, you must call `flushdword` to flush the
+                buffer.
+            """
+            EUDSwitch(self._suboffset)
+            for i in range(3):
+                if EUDSwitchCase()(i):
+                    DoActions([self._b[i].SetNumber(byte), self._suboffset.AddNumber(1)])
+                    EUDBreak()
+
+            if EUDSwitchCase()(3):
+                DoActions(self._b[3].SetNumber(byte))
+                self.flushdword()
+
+            EUDEndSwitch()
+
+        @EUDMethod
+        def flushdword(self):
+            """Flush buffer."""
+            # mux bytes
+            DoActions(SetDeaths(CurrentPlayer, SetTo, 0, 0))
+
+            for i in range(7, -1, -1):
+                for j in range(4):
+                    RawTrigger(
+                        conditions=[self._b[j].AtLeast(2 ** i)],
+                        actions=[
+                            self._b[j].SubtractNumber(2 ** i),
+                            SetDeaths(CurrentPlayer, Add, 2 ** (i + j * 8), 0),
+                        ],
+                    )
+            DoActions(
+                [
+                    SetMemory(CP, Add, 1),
+                    self._suboffset.SetNumber(0),
+                    [self._b[i].SetNumber(b2i1(b"\r")) for i in range(4)],
+                ]
+            )
+
+
+    cw = CPByteWriter()
+
+try:
+    from loc import SetLoc
+except (ImportError):
+
+    def _locfgen(mod1, mod2, mod3, mod4):
+
+        @EUDFunc
+        def _locf(epd, x, y):
+            act = Forward()
+
+            VProc(epd, [
+                epd.AddNumber(EPD(0x58DC60)),
+                epd.QueueAssignTo(EPD(act) + 4)
+            ])
+            VProc(x, x.QueueAssignTo(EPD(act) + 5))
+
+            VProc(epd, [
+                epd.AddNumber(1),
+                SetMemory(epd._varact + 16, Add, 8)
+            ])
+            VProc(y, y.QueueAssignTo(EPD(act) + 5 + 8))
+
+            VProc(epd, [
+                epd.AddNumber(1),
+                SetMemory(epd._varact + 16, Add, 8)
+            ])
+            VProc(x, SetMemory(x._varact + 16, Add, 16))
+
+            VProc(epd, [
+                epd.AddNumber(1),
+                SetMemory(epd._varact + 16, Add, 8)
+            ])
+            VProc(y, SetMemory(y._varact + 16, Add, 16))
+
+            DoActions([
+                act << SetMemory(0, mod1, 0),
+                SetMemory(0, mod2, 0),
+                SetMemory(0, mod3, 0),
+                SetMemory(0, mod4, 0),
+            ])
+
+        return _locf
+
+    _SetLoc = _locfgen(SetTo, SetTo, SetTo, SetTo)
+
+    def SetLoc(locID, x, y):
+        _SetLoc(locID * 5, x, y)
 
 
 def EncPlayer(s):  # str to int (Player)
@@ -28,24 +137,13 @@ def EncPlayer(s):  # str to int (Player)
 
 
 @EUDFunc
-def SetLocation(locid, x, y):
-    DoActions([
-        SetMemoryEPD(EPD(0x58DC60) + locid * 5 + 0, SetTo, x),
-        SetMemoryEPD(EPD(0x58DC60) + locid * 5 + 1, SetTo, y),
-        SetMemoryEPD(EPD(0x58DC60) + locid * 5 + 2, SetTo, x),
-        SetMemoryEPD(EPD(0x58DC60) + locid * 5 + 3, SetTo, y),
-    ])
-
-
-@EUDFunc
 def _cunitreader():
     ptr, epd = EUDVariable(), EUDVariable()
     addact = Forward()
-    addact_number = addact + 20
     DoActions([
         ptr.SetNumber(0x59CCA8),
         epd.SetNumber(EPD(0x59CCA8)),
-        SetMemory(addact_number, SetTo, 0),
+        SetMemory(addact + 20, SetTo, 0),
     ])
     for i in range(10, -1, -1):
         RawTrigger(
@@ -56,12 +154,13 @@ def _cunitreader():
                 SetDeaths(CurrentPlayer, Subtract, 336 * 2**i, 0),
                 ptr.AddNumber(336 * 2**i),
                 epd.AddNumber(84 * 2**i),
-                SetMemory(addact_number, Add, 336 * 2**i),
+                SetMemory(addact + 20, Add, 336 * 2**i),
             ]
         )
-    RawTrigger(actions=[addact << SetDeaths(CurrentPlayer, Add, 0xEDAC, 0)])
 
-    return ptr, epd
+    DoActions([addact << SetDeaths(CurrentPlayer, Add, 0, 0)])
+
+    EUDReturn(ptr, epd)
 
 
 def f_dwepdcunitread_cp(cpo):
@@ -347,7 +446,7 @@ DoActions([
                         V_L.extend([int(v)])
                 V = V_L
                 Ret = '''PosX, PosY = f_dwbreak(PosXY)[0:2]
-SetLocation(VTrgLoc[i][p], PosX, PosY)'''
+SetLoc(VTrgLoc[i][p], PosX, PosY)'''
             elif len(V) == 1:  # return death
                 try:
                     UNIT = int(EncodeUnit(V[0]))
@@ -437,7 +536,7 @@ def initQC():
     f_wwrite_epd(EPD(0x661518) + q2, 2*m2, 0x1CF)  # Editor Ability Flags
     f_bwrite_epd(EPD(0x660FC8) + q, mod, 0xC5)  # MovementFlags
     f_bwrite_epd(EPD(0x663150) + q, mod, 0x13)  # Elevation
-    SetLocation(init_loc, init_x * 32, init_y * 32)
+    SetLoc(init_loc, init_x * 32, init_y * 32)
     DoActions([
         SetMemoryEPD(loc_epd + 4, SetTo, loc_flags & 0xFFFF),
         MoveLocation(init_loc + 1, 227, 11, init_loc + 1),
@@ -456,7 +555,7 @@ def initQC():
                 SetMemory(0x6509B0, SetTo, epd + 0x28 // 4),
             ])
             x, y = f_dwbreak(f_dwread_cp(0))[0:2]
-            SetLocation(init_loc, x, y)
+            SetLoc(init_loc, x, y)
             DoActions([
                 GiveUnits(1, QCUnitID, P8, init_loc + 1, QCPlayer),
                 SetMemory(0x6509B0, Subtract, (0x28 - 0x10) // 4),
