@@ -4,6 +4,7 @@ VERSION
 *.txt
 *.zip
 .vscode
+lib/blake2s
 
 data/*
 
