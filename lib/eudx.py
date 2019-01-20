@@ -1,19 +1,29 @@
 from eudplib import *
-'SC:R EUD eXtended thanks to 0xeb, trgk'
+
+"SC:R EUD eXtended thanks to 0xeb, trgk"
 tmp = EUDLightVariable()
 _tmp = tmp.getValueAddr()
 
 
 class ConditionX(Condition):
+    def __init__(
+        self, locid, player, amount, unitid, comparison, condtype, restype, flags
+    ):
+        super().__init__(
+            locid, player, amount, unitid, comparison, condtype, restype, flags
+        )
 
-    def __init__(self, locid, player, amount, unitid,
-                 comparison, condtype, restype, flags):
-        super().__init__(locid, player, amount, unitid,
-                         comparison, condtype, restype, flags)
-
-        self.fields = [locid, player, amount, unitid,
-                       comparison, condtype, restype, flags,
-                       b2i2(b'SC')]
+        self.fields = [
+            locid,
+            player,
+            amount,
+            unitid,
+            comparison,
+            condtype,
+            restype,
+            flags,
+            b2i2(b"SC"),
+        ]
 
 
 def DeathsX(Player, Comparison, Number, Unit, Mask):
@@ -32,15 +42,37 @@ def MemoryXEPD(dest, cmptype, value, mask):
 
 
 class ActionX(Action):
+    def __init__(
+        self,
+        locid1,
+        strid,
+        wavid,
+        time,
+        player1,
+        player2,
+        unitid,
+        acttype,
+        amount,
+        flags,
+    ):
+        super().__init__(
+            locid1, strid, wavid, time, player1, player2, unitid, acttype, amount, flags
+        )
 
-    def __init__(self, locid1, strid, wavid, time, player1, player2,
-                 unitid, acttype, amount, flags):
-        super().__init__(locid1, strid, wavid, time, player1, player2,
-                         unitid, acttype, amount, flags)
-
-        self.fields = [locid1, strid, wavid, time, player1,
-                       player2, unitid, acttype, amount, flags,
-                       0, b2i2(b'SC')]
+        self.fields = [
+            locid1,
+            strid,
+            wavid,
+            time,
+            player1,
+            player2,
+            unitid,
+            acttype,
+            amount,
+            flags,
+            0,
+            b2i2(b"SC"),
+        ]
 
 
 def SetDeathsX(Player, Modifier, Number, Unit, Mask):
@@ -69,15 +101,63 @@ def BitANDEPD(epd, b):
     return SetMemoryXEPD(epd, SetTo, 0, ~b)
 
 
-def BitXOREPD(epd, b):
+def BitXOREUDV(a, b):
     c = Forward()
     ret = [
         SetMemory(c + 20, SetTo, a),
-        SetMemoryXEPD(epd, SetTo, ~0, b),
-        SetMemoryX(c + 20, SetTo, 0, ~b),
-        c << SetMemoryEPD(epd, Subtract, 0xEDAC)
+        SetMemoryX(a.getValueAddr(), SetTo, ~0, b),  # a | b
+        SetMemoryX(c + 20, SetTo, 0, ~b),  # a & b
+        c << a.SubtractNumber(0xEDAC),
     ]
     return ret
+
+
+def bound32(x):
+    while x < 0:
+        x += 32
+    while x >= 32:
+        x -= 32
+    return x
+
+
+def bits(n):
+    n = n & 0xFFFFFFFF
+    while n:
+        b = n & (~n + 1)
+        yield b
+        n ^= b
+
+
+def f_constcrshift(number, mask=0xFFFFFFFF):
+    if not hasattr(f_constcrshift, "mulfdict"):
+        f_constcrshift.crsfdict = {}
+
+    crsfdict = f_constcrshift.crsfdict
+
+    try:
+        return crsfdict[(number, mask)]
+    except KeyError:
+
+        @EUDFunc
+        def _crsf(a):
+            ret = EUDVariable()
+            DoActions(ret.SetNumber(0))
+            for b in bits(mask):
+                RawTrigger(
+                    conditions=MemoryX(a.getValueAddr(), Exactly, 2 ** b, 2 ** b),
+                    actions=ret.AddNumber(2 ** bound32(b - number)),
+                )
+            return ret
+
+        crsfdict[(number, mask)] = _crsf
+        return _crsf
+
+
+def f_bitcrshift(a, b, mask=0xFFFFFFFF):
+    if isinstance(b, int):
+        f_constcrshift(b, mask)(a)
+    else:
+        return f_bitor(f_bitrshift(a, b), f_bitlshift(a, 32 - b))
 
 
 def f_omeread_epd(targetplayer, mask, *args, _readerdict={}):
@@ -87,7 +167,7 @@ def f_omeread_epd(targetplayer, mask, *args, _readerdict={}):
     def bits(n):
         n = n & 0xFFFFFFFF
         while n:
-            b = n & (~n+1)
+            b = n & (~n + 1)
             if not all(f(b) == 0 for f in funcs):
                 yield b
             n ^= b
@@ -95,35 +175,32 @@ def f_omeread_epd(targetplayer, mask, *args, _readerdict={}):
     key = (
         tuple(b for b in bits(mask)),
         tuple(initvals),
-        tuple(tuple(f(b) for b in bits(mask)) for f in funcs)
+        tuple(tuple(f(b) for b in bits(mask)) for f in funcs),
     )
 
     if key in _readerdict:
         readerf = _readerdict[key]
     else:
+
         @EUDFunc
         def readerf(targetplayer):
             origcp = f_getcurpl()
-            f_setcurpl(targetplayer)
-
             ret = [EUDVariable() for _ in args]
-            DoActions([
-                ret[i].SetNumber(v)
-                for i, v in enumerate(initvals)
-            ])
+            DoActions(
+                [SetCurrentPlayer(targetplayer)]
+                + [ret[i].SetNumber(v) for i, v in enumerate(initvals)]
+            )
 
             # Fill flags
             for i in bits(mask):
-                RawTrigger(
-                    conditions=[
-                        DeathsX(CurrentPlayer, Exactly, i, 0, i)
-                    ],
-                    actions=[
-                        [] if f(i) == 0
-                        else ret[k].AddNumber(f(i))
-                        for k, f in enumerate(funcs)
-                    ]
-                )
+                if not all(f(i) == 0 for f in funcs):
+                    RawTrigger(
+                        conditions=[DeathsX(CurrentPlayer, Exactly, i, 0, i)],
+                        actions=[
+                            [] if f(i) == 0 else ret[k].AddNumber(f(i))
+                            for k, f in enumerate(funcs)
+                        ],
+                    )
 
             f_setcurpl(origcp)
 
@@ -136,50 +213,68 @@ def f_omeread_epd(targetplayer, mask, *args, _readerdict={}):
 
 def f_dwepdread_epd(targetplayer, mask=~0):
     return f_omeread_epd(
-        targetplayer, mask,
-        (lambda a: a, 0),
-        (lambda b: b // 4, EPD(0))
+        targetplayer, mask, (lambda a: a, 0), (lambda b: b // 4, EPD(0))
     )
 
 
 def f_dwread_epd(targetplayer, mask=~0):
-    return f_omeread_epd(
-        targetplayer, mask,
-        (lambda a: a, 0)
-    )
+    return f_omeread_epd(targetplayer, mask, (lambda a: a, 0))
 
 
 def f_epdread_epd(targetplayer, mask=~0):
-    return f_omeread_epd(
-        targetplayer, mask,
-        (lambda b: b // 4, EPD(0))
-    )
+    return f_omeread_epd(targetplayer, mask, (lambda b: b // 4, EPD(0)))
 
 
-def f_wwread_epd(targetplayer, subp):
-    i = 256 ** subp
-    return f_omeread_epd(
-        targetplayer, 65535 * i,
-        (lambda a: a // i, 0)
-    )
+@EUDFunc
+def f_wread_epd(epd, subp):
+    EUDSwitch(subp)
+    for i in range(3):
+        EUDSwitchCase()(i)
+        k = 256 ** i
+        EUDReturn(f_omeread_epd(epd, 65535 * k, (lambda a: a // k, 0)))
+    if EUDSwitchCase()(3):
+        dw0 = f_bread_epd(epd, 3)
+        dw1 = f_bread_epd(epd + 1, 0)
+        EUDReturn(dw0 + dw1 * 256)
+    EUDEndSwitch()
 
 
-def f_bread_epd(targetplayer, subp):
-    i = 256 ** subp
-    return f_omeread_epd(
-        targetplayer, 256 * i - 1,
-        (lambda a: a // i, 0)
-    )
+@EUDFunc
+def f_bread_epd(epd, subp):
+    EUDSwitch(subp)
+    for i in range(4):
+        EUDSwitchCase()(i)
+        k = 256 ** i
+        EUDReturn(f_omeread_epd(epd, 255 * k, (lambda a: a // k, 0)))
+    EUDEndSwitch()
 
 
-def _omeread_cp(mask, *args, _readerdict={}):
+@EUDFunc
+def _bwrite_epd(epd, subp, b):
+    EUDSwitch(subp)
+    for i in range(4):
+        EUDSwitchCase()(i)
+        k = 256 ** i
+        DoActions(SetMemoryXEPD(epd, SetTo, b * k, 255 * k))
+    EUDEndSwitch()
+
+
+def f_bwrite_epd(epd, subp, b):
+    if isinstance(subp, int):
+        k = 256 ** subp
+        DoActions(SetMemoryXEPD(epd, SetTo, b * k, 255 * k))
+    else:
+        _bwrite_epd(epd, subp, b)
+
+
+def f_omeread_cp(mask, *args, _readerdict={}):
     funcs = [a[0] for a in args]
     initvals = [a[1] for a in args]
 
     def bits(n):
         n = n & 0xFFFFFFFF
         while n:
-            b = n & (~n+1)
+            b = n & (~n + 1)
             if not all(f(b) == 0 for f in funcs):
                 yield b
             n ^= b
@@ -187,32 +282,27 @@ def _omeread_cp(mask, *args, _readerdict={}):
     key = (
         tuple(b for b in bits(mask)),
         tuple(initvals),
-        tuple(tuple(f(b) for b in bits(mask)) for f in funcs)
+        tuple(tuple(f(b) for b in bits(mask)) for f in funcs),
     )
 
     if key in _readerdict:
         readerf = _readerdict[key]
     else:
+
         @EUDFunc
         def readerf():
 
             ret = [EUDVariable() for _ in args]
-            DoActions([
-                ret[i].SetNumber(v)
-                for i, v in enumerate(initvals)
-            ])
+            DoActions([ret[i].SetNumber(v) for i, v in enumerate(initvals)])
 
             # Fill flags
             for i in bits(mask):
                 RawTrigger(
-                    conditions=[
-                        DeathsX(CurrentPlayer, Exactly, i, 0, i)
-                    ],
+                    conditions=[DeathsX(CurrentPlayer, Exactly, i, 0, i)],
                     actions=[
-                        [] if f(i) == 0
-                        else ret[k].AddNumber(f(i))
+                        [] if f(i) == 0 else ret[k].AddNumber(f(i))
                         for k, f in enumerate(funcs)
-                    ]
+                    ],
                 )
 
             return List2Assignable(ret)
@@ -222,61 +312,47 @@ def _omeread_cp(mask, *args, _readerdict={}):
     return readerf()
 
 
-def f_omeread_cp(cpoffset, mask, *args):
-    if cpoffset != 0:
-        DoActions(SetMemory(0x6509B0, Add, cpoffset))
-    ret = _omeread_cp(mask, *args)
-    if cpoffset != 0:
-        DoActions(SetMemory(0x6509B0, Add, -cpoffset))
-    return List2Assignable(ret)
-
-
 def f_dwepdread_cp(cpoffset, mask=~0):
-    return f_omeread_cp(
-        cpoffset, mask,
-        (lambda a: a, 0),
-        (lambda b: b // 4, EPD(0))
-    )
+    if cpoffset != 0:
+        raise EPError("cpoffset other than 0 isn't supported yet")
+    return f_omeread_cp(mask, (lambda a: a, 0), (lambda b: b // 4, EPD(0)))
 
 
 def f_dwread_cp(cpoffset, mask=~0):
-    return f_omeread_cp(
-        cpoffset, mask,
-        (lambda a: a, 0)
-    )
+    if cpoffset != 0:
+        raise EPError("cpoffset other than 0 isn't supported yet")
+    return f_omeread_cp(mask, (lambda a: a, 0))
 
 
 def f_epdread_cp(cpoffset, mask=~0):
-    return f_omeread_cp(
-        cpoffset, mask,
-        (lambda b: b // 4, EPD(0))
-    )
+    if cpoffset != 0:
+        raise EPError("cpoffset other than 0 isn't supported yet")
+    return f_omeread_cp(mask, (lambda b: b // 4, EPD(0)))
 
 
 def f_wread_cp(cpoffset, subp):
+    if cpoffset != 0:
+        raise EPError("cpoffset other than 0 isn't supported yet")
     i = 256 ** subp
-    return f_omeread_cp(
-        cpoffset, 65535 * i,
-        (lambda a: a // i, 0)
-    )
+    return f_omeread_cp(65535 * i, (lambda a: a // i, 0))
 
 
 def f_bread_cp(cpoffset, subp):
+    if cpoffset != 0:
+        raise EPError("cpoffset other than 0 isn't supported yet")
     i = 256 ** subp
-    return f_omeread_cp(
-        cpoffset, 256 * i - 1,
-        (lambda a: a // i, 0)
-    )
-    
+    return f_omeread_cp(255 * i, (lambda a: a // i, 0))
+
 
 def f_maskread_epd(targetplayer, mask, _readerdict={}):
 
     if mask in _readerdict:
         readerf = _readerdict[mask]
     else:
+
         def bits(n):
             while n:
-                b = n & (~n+1)
+                b = n & (~n + 1)
                 yield b
                 n ^= b
 
@@ -291,12 +367,8 @@ def f_maskread_epd(targetplayer, mask, _readerdict={}):
             # Fill flags
             for i in bits(mask):
                 RawTrigger(
-                    conditions=[
-                        DeathsX(CurrentPlayer, Exactly, i, 0, i)
-                    ],
-                    actions=[
-                        ret.AddNumber(i)
-                    ]
+                    conditions=[DeathsX(CurrentPlayer, Exactly, i, 0, i)],
+                    actions=[ret.AddNumber(i)],
                 )
 
             f_setcurpl(origcp)
