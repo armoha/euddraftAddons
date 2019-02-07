@@ -743,7 +743,7 @@ f_cprint_epd = f_sprintf_epd
 
 def f_chatAnnouncement(*args):
     f_chatprint(12, *args)
-    
+
 
 def f_chatAnnouncement_epd(*args):
     f_chatprint_epd(12, *args)

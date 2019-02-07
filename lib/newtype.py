@@ -103,11 +103,8 @@ class Uint8Array(ExprProxy):
 
 
 class PVariable:
-    def __init__(self, initval=0):
-        try:
-            self.v = [EUDVariable(v) for v in initval[:8]]
-        except (TypeError):
-            self.v = [EUDVariable(initval) for _ in range(8)]
+    def __init__(self, initvars=None):
+        self.variables = EUDVArray(8)(initvars)
 
     @EUDTypedMethod([TrgPlayer], [None])
     def _getitem(self, player):
@@ -115,7 +112,7 @@ class PVariable:
         EUDSwitch(player)
         for p in range(8):
             EUDSwitchCase()(p)
-            _temp << self.v[p]
+            _temp << self.variables[p]
             EUDBreak()
         EUDEndSwitch()
         return _temp
@@ -123,31 +120,31 @@ class PVariable:
     def __getitem__(self, player):
         player = EncodePlayer(player)
         try:
-            return self.v[player]
+            return self.variables[player]
         except (TypeError):
             return self._getitem(player)
 
     def __len__(self):
-        return len(self.v)
+        return len(self.variables)
 
     @EUDTypedMethod([TrgPlayer, None])
     def _setitem(self, player, item):
         EUDSwitch(player)
         for p in range(8):
             EUDSwitchCase()(p)
-            self.v[p].Assign(item)
+            self.variables[p].Assign(item)
             EUDBreak()
         EUDEndSwitch()
 
     def __setitem__(self, player, item):
         player = EncodePlayer(player)
         try:
-            self.v[player].Assign(item)
+            self.variables[player].Assign(item)
         except (TypeError):
             self._setitem(player, item)
 
     def __iter__(self):
-        return iter(self.v)
+        return iter(self.variables)
 
 
 chkt = GetChkTokenized()
@@ -162,11 +159,8 @@ def p2i(player):
 
 
 class HVariable(PVariable):
-    def __init__(self, initval=0):
-        try:
-            self.v = [EUDVariable(v) for v in initval[:len(human)]]
-        except (TypeError):
-            self.v = [EUDVariable(initval) for _ in human]
+    def __init__(self, initvars=None):
+        self.variables = EUDVArray(len(human))(initvars)
 
     @EUDTypedMethod([TrgPlayer], [None])
     def _getitem(self, player):
@@ -174,7 +168,7 @@ class HVariable(PVariable):
         EUDSwitch(player)
         for p in human:
             EUDSwitchCase()(p)
-            _temp << self.v[p2i(p)]
+            _temp << self.variables[p2i(p)]
             EUDBreak()
         EUDEndSwitch()
         EUDReturn(_temp)
@@ -182,7 +176,7 @@ class HVariable(PVariable):
     def __getitem__(self, player):
         player = EncodePlayer(player)
         try:
-            return self.v[p2i(player)]
+            return self.variables[p2i(player)]
         except (EPError):
             return self._getitem(player)
 
@@ -191,13 +185,13 @@ class HVariable(PVariable):
         EUDSwitch(player)
         for p in human:
             EUDSwitchCase()(p)
-            self.v[p2i(p)].Assign(item)
+            self.variables[p2i(p)].Assign(item)
             EUDBreak()
         EUDEndSwitch()
 
     def __setitem__(self, player, item):
         player = EncodePlayer(player)
         try:
-            self.v[p2i(player)].Assign(item)
+            self.variables[p2i(player)].Assign(item)
         except (EPError):
             self._setitem(player, item)
