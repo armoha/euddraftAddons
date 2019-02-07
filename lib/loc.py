@@ -70,3 +70,17 @@ def GetLocTL(locID):
     # 로케이션의 위(top), 왼쪽 (left) 좌표를 얻어냅니다.
     # @param  {[type]} locID 로케이션 번호. $L(로케이션 이름) 으로 얻을 수 있습니다.
     return _GetLocTL(locID * 5)
+
+
+@EUDFunc
+def _SetLocEPD(loc, epd):
+    loc += EPD(0x58DC60)
+    x, y = f_dwbreak(f_dwread_epd(epd))[0:2]
+    f_dwwrite_epd(loc, x)
+    f_dwwrite_epd(loc + 1, y)
+    f_dwwrite_epd(loc + 2, x)
+    f_dwwrite_epd(loc + 3, y)
+
+
+def SetLocEPD(locID, epd):
+    return _SetLocEPD(locID * 5, epd)
