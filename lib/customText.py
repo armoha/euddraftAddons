@@ -83,7 +83,7 @@ def onInit():
         bufferoffset = stroffset[strmap._dataindextb[strBuffer - 1]]
         if bufferoffset % 4 != 2:
             strmap._datatb[strmap._dataindextb[strBuffer - 2]] = b"@2+4n!"[
-                0 : 4 - bufferoffset % 4
+                0: 4 - bufferoffset % 4
             ]
             strmap._capacity -= 2 + bufferoffset % 4
             ApplyStringMap(chkt)
@@ -92,7 +92,7 @@ def onInit():
 
     def _alert():
         STR = chkt.getsection("STR")
-        buffer_ptr = b2i2(STR[2 * strBuffer : 2 * strBuffer + 2])
+        buffer_ptr = b2i2(STR[2 * strBuffer: 2 * strBuffer + 2])
         if buffer_ptr % 4 >= 1:
             raise EPError("Parity mismatched")
 
@@ -213,21 +213,25 @@ class CPString:
         elif isinstance(content, str) or isinstance(content, bytes):
             self.content = _s2b(content)
         else:
-            raise EPError("Unexpected type for CPString: {}".format(type(content)))
+            raise EPError(
+                "Unexpected type for CPString: {}".format(type(content)))
 
         self.length = len(self.content) // 4
         self.trigger = list()
         self.valueAddr = list()
         actions = [
             [
-                SetDeaths(CurrentPlayer, SetTo, f_b2i(self.content[i : i + 4]), 0),
+                SetDeaths(
+                    CurrentPlayer, SetTo,
+                    f_b2i(self.content[i: i + 4]), 0
+                ),
                 SetMemory(CP, Add, 1),
             ]
             for i in range(0, len(self.content), 4)
         ] + _addcpcache(self.length)
         actions = FlattenList(actions)
         for i in range(0, len(actions), 64):
-            t = RawTrigger(actions=actions[i : i + 64])
+            t = RawTrigger(actions=actions[i: i + 64])
             self.trigger.append(t)
             self.valueAddr.extend(
                 [
@@ -246,7 +250,9 @@ class CPString:
             nextptr=self.trigger[0],
             actions=[action] + [SetNextPtr(self.trigger[-1], _next)]
         )
-        _next << RawTrigger(actions=SetNextPtr(self.trigger[-1], self._nextptr))
+        _next << RawTrigger(
+            actions=SetNextPtr(self.trigger[-1], self._nextptr)
+        )
 
     def GetVTable(self):
         return self.trigger[0]
@@ -260,22 +266,28 @@ class CPString:
         elif isinstance(content, str) or isinstance(content, bytes):
             content = _s2b(content)
         else:
-            raise EPError("Unexpected type for CPString: {}".format(type(content)))
+            raise EPError(
+                "Unexpected type for CPString: {}".format(type(content)))
         ret = list()
         for i in range(0, len(content), 4):
             ret.extend(
                 [
                     SetMemory(
-                        self.valueAddr[i // 4], SetTo, f_b2i(content[i : i + 4]), 0
+                        self.valueAddr[i // 4],
+                        SetTo, f_b2i(content[i: i + 4]), 0
                     ),
-                    SetMemory(self.valueAddr[i // 4] + 4, SetTo, 0x072D0000, 0),
+                    SetMemory(
+                        self.valueAddr[i // 4] + 4,
+                        SetTo, 0x072D0000, 0
+                    ),
                 ]
             )
         ret.append(_addcpcache(len(content) // 4))
         if len(content) % (4 * 32) >= 1:
             ret.append(
                 SetMemory(
-                    self.valueAddr[len(content) // 4 - 1] + 68, SetTo, 0x07000000, 0
+                    self.valueAddr[len(content) // 4 - 1] + 68,
+                    SetTo, 0x07000000, 0
                 )
             )
         self.content = content
@@ -304,7 +316,8 @@ class CPByteWriter:
         EUDSwitch(self._suboffset)
         for i in range(3):
             if EUDSwitchCase()(i):
-                DoActions([self._b[i].SetNumber(byte), self._suboffset.AddNumber(1)])
+                DoActions([self._b[i].SetNumber(byte),
+                           self._suboffset.AddNumber(1)])
                 EUDBreak()
 
         if EUDSwitchCase()(3):
@@ -472,7 +485,7 @@ def f_addbyte_cp(b):
     DoActions(
         [
             [
-                SetDeaths(CurrentPlayer, SetTo, b2i4(b[i : i + 4]), 0),
+                SetDeaths(CurrentPlayer, SetTo, b2i4(b[i: i + 4]), 0),
                 SetMemory(CP, Add, 1),
             ]
             for i in range(0, len(b), 4)
@@ -572,7 +585,8 @@ def f_addptr_cp(number):
                 RawTrigger(
                     conditions=digit[j + 4 * (i // 16)].AtLeast(10),
                     actions=SetDeaths(
-                        CurrentPlayer, Add, (b"A"[0] - b":"[0]) * (256 ** (3 - j)), 0
+                        CurrentPlayer, Add,
+                        (b"A"[0] - b":"[0]) * (256 ** (3 - j)), 0
                     ),
                 )
             DoActions(
@@ -617,7 +631,8 @@ def f_cpprint(*args):
                 nextptr=arg.trigger[0],
                 actions=SetNextPtr(arg.trigger[-1], _next)
             )
-            _next << RawTrigger(actions=SetNextPtr(arg.trigger[-1], arg._nextptr))
+            _next << RawTrigger(actions=SetNextPtr(
+                arg.trigger[-1], arg._nextptr))
         elif isUnproxyInstance(arg, f_str):
             f_addstr_cp(arg._value)
         elif isUnproxyInstance(arg, f_s2u):
@@ -633,7 +648,8 @@ def f_cpprint(*args):
             delta += 2
         else:
             raise EPError(
-                "Object with unknown parameter type %s given to f_cpprint." % type(arg)
+                "Object with unknown parameter type %s given to f_cpprint."
+                % type(arg)
             )
     DoActions(SetDeaths(CurrentPlayer, SetTo, 0, 0))
     return delta
@@ -853,13 +869,14 @@ def f_addChat(*args):
 def _chatprint_prep(*args, player=None, line=None, acts=[]):
     if isinstance(line, int):
         if line >= 0 and line <= 10:
-            DoActions([acts] + [SetMemory(0x640B58, SetTo, line), DisplayText(" ")])
+            DoActions(
+                [acts] + [SetMemory(0x640B58, SetTo, line), DisplayText(" ")])
         elif line == 12:
             f_printError(player)
     f_setcurpl(f_chatepd(line))
     if isinstance(line, int) and line % 2 == 1:
         args = ("\x0D\x0D\x0D\x0D") + args
-    chatepd << f_cpprint(*args)
+    f_cpprint(*args)
     f_setcachedcp()
 
 
@@ -873,7 +890,8 @@ def f_chatprint(line, *args):
 def f_chatprintP(player, line, *args):
     if EUDIf()(Memory(0x57F1B0, Exactly, player)):
         f_updatecpcache()
-        _chatprint_prep(*args, player=player, line=line, acts=SetMemory(CP, SetTo, player))
+        _chatprint_prep(*args, player=player, line=line,
+                        acts=SetMemory(CP, SetTo, player))
     EUDEndIf()
 
 
@@ -985,7 +1003,8 @@ def f_TBLinit():
 
     f_tblptr(0)  # prevent Forward Not initialized
     _tbl_end << RawTrigger(
-        actions=[_initTbl.SetNumber(1), _tbl_return << SetNextPtr(0xEDAC, 0xF001)]
+        actions=[_initTbl.SetNumber(1), _tbl_return <<
+                 SetNextPtr(0xEDAC, 0xF001)]
     )
 
 
