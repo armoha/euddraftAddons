@@ -33,7 +33,8 @@ texteffect.py 0.3.4 by Artanis
     interval -> wait
     autoreset -> reset
 - Text identifier and timer are now identical
-    - Can remove text on screen by f_remove(timer), effects sharing timer uses same identifier.
+    - Can remove text on screen by f_remove(timer).
+    - Effects sharing timer uses same identifier.
 
 ### Added
 - f_char_cpprint and series of CurrentPlayer print functions are added.
@@ -131,7 +132,8 @@ def f_char_adddw_cp(number):
         DoActions(
             [
                 SetDeaths(
-                    CurrentPlayer, SetTo, color_v + ch[i] * 256 + (0x0D0D3000), 0
+                    CurrentPlayer, SetTo,
+                    color_v + ch[i] * 256 + (0x0D0D3000), 0
                 ),
                 SetMemory(CP, Add, 1),
             ]
@@ -321,8 +323,7 @@ def is_cp_below_strBuffer(actions):
     _next = Forward()
     RawTrigger(
         nextptr=_isbelowbuffer,
-        actions=[actions]
-        + [_cpbelowbuffer.SetNumber(0), SetNextPtr(_isbelowbuffer, _next)],
+        actions=[actions] + [_cpbelowbuffer.SetNumber(0), SetNextPtr(_isbelowbuffer, _next)],
     )
     _next << NextTrigger()
 
