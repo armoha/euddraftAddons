@@ -9,7 +9,13 @@ from eudplib.core.mapdata.stringmap import ApplyStringMap, strmap
 from eudplib.eudlib.stringf.rwcommon import br1, bw1
 
 """
-customText 0.4.4 by Artanis
+customText 0.4.6 by Artanis
+
+0.4.6
+- Reduced size of CPString.
+
+0.4.5
+- Fixed bug that caused desync when executes f_chatprint with sync condition(s).
 
 0.4.4
 - Fixed bug with f_chatprint.
@@ -200,7 +206,7 @@ class CPString:
     store String in SetDeaths Actions, easy to concatenate
     """
 
-    def __init__(self, content=None, nextptr=None):
+    def __init__(self, content=None):
         """Constructor for CPString
         :param content: Initial CPString content / capacity. Capacity of
             CPString is determined by size of this. If content is integer, then
@@ -218,31 +224,38 @@ class CPString:
 
         self.length = len(self.content) // 4
         self.trigger = list()
-        self.valueAddr = list()
+        self.valueAddr = [0 for _ in range(self.length)]
         actions = [
             [
                 SetDeaths(
                     CurrentPlayer, SetTo,
-                    f_b2i(self.content[i: i + 4]), 0
-                ),
-                SetMemory(CP, Add, 1),
-            ]
-            for i in range(0, len(self.content), 4)
-        ] + _addcpcache(self.length)
+                    b2i4(self.content[i:i + 4]), i // 48
+                )
+                for i in range(4 * mod, len(self.content), 48)
+            ] for mod in range(12)
+        ]
+        modlength = self.length
+        addr = 0
+        for i, a in enumerate(actions):
+            for k in range(len(a)):
+                self.valueAddr[i + 12 * k] = addr
+                addr += 1
+            if a and i < 11:
+                a.append(SetMemory(CP, Add, 1))
+                addr += 1
+        actions.extend([
+            [SetMemory(CP, Add, modlength) if modlength > 0 else []],
+            _addcpcache(self.length),
+        ])
         actions = FlattenList(actions)
+
+        PushTriggerScope()
         for i in range(0, len(actions), 64):
             t = RawTrigger(actions=actions[i: i + 64])
             self.trigger.append(t)
-            self.valueAddr.extend(
-                [
-                    t + (8 + 320 + 20) + 64 * k
-                    for k in range(min(32, (len(actions) - i) // 2))
-                ]
-            )
-        self._nextptr = None
-        if nextptr is not None:
-            self.trigger[-1]._nextptr = nextptr
-            self._nextptr = nextptr
+        PopTriggerScope()
+
+        self.valueAddr = [self.trigger[v // 64] + 348 + 32 * (v % 64) for v in self.valueAddr]
 
     def Display(self, action=[]):
         _next = Forward()
@@ -250,9 +263,7 @@ class CPString:
             nextptr=self.trigger[0],
             actions=[action] + [SetNextPtr(self.trigger[-1], _next)]
         )
-        _next << RawTrigger(
-            actions=SetNextPtr(self.trigger[-1], self._nextptr)
-        )
+        _next << NextTrigger()
 
     def GetVTable(self):
         return self.trigger[0]
@@ -619,20 +630,14 @@ def f_cpprint(*args):
             arg = u2b(arg._value)
         elif isUnproxyInstance(arg, int):
             arg = u2b(str(arg & 0xFFFFFFFF))
-        _next = Forward()
         if isUnproxyInstance(arg, bytes):
             key = _s2b(arg)
             if key not in _constcpstr_dict:
-                _constcpstr_dict[key] = CPString(arg, _next)
+                _constcpstr_dict[key] = CPString(arg)
             arg = _constcpstr_dict[key]
         if isUnproxyInstance(arg, CPString):
             delta += arg.length
-            RawTrigger(
-                nextptr=arg.trigger[0],
-                actions=SetNextPtr(arg.trigger[-1], _next)
-            )
-            _next << RawTrigger(actions=SetNextPtr(
-                arg.trigger[-1], arg._nextptr))
+            arg.Display()
         elif isUnproxyInstance(arg, f_str):
             f_addstr_cp(arg._value)
         elif isUnproxyInstance(arg, f_s2u):
@@ -824,13 +829,11 @@ def f_printError(player):
     if EUDIfNot()([_nextptrcacheMatchCond << Memory(NEXT_PTR, Exactly, 0)]):
         _updatenextptrcache()
     EUDEndIf()
-    DoActions(
-        [
-            SetMemory(NEXT_PTR, SetTo, 0),
-            CreateUnit(1, 0, 1, player),
-            _restorePtr << SetMemory(NEXT_PTR, SetTo, 0),
-        ]
-    )
+    DoActions([
+        SetMemory(NEXT_PTR, SetTo, 0),
+        CreateUnit(1, 0, 1, player),
+        _restorePtr << SetMemory(NEXT_PTR, SetTo, 0),
+    ])
 
 
 @EUDFunc
@@ -866,13 +869,10 @@ def f_addChat(*args):
     f_addText(*args)
 
 
-def _chatprint_prep(*args, player=None, line=None, acts=[]):
-    if isinstance(line, int):
-        if line >= 0 and line <= 10:
-            DoActions(
-                [acts] + [SetMemory(0x640B58, SetTo, line), DisplayText(" ")])
-        elif line == 12:
-            f_printError(player)
+def _chatprint_prep(*args, line=None, acts=[]):
+    if isinstance(line, int) and line >= 0 and line <= 10:
+        DoActions(
+            [acts] + [SetMemory(0x640B58, SetTo, line), DisplayText(" ")])
     f_setcurpl(f_chatepd(line))
     if isinstance(line, int) and line % 2 == 1:
         args = ("\x0D\x0D\x0D\x0D") + args
@@ -881,24 +881,30 @@ def _chatprint_prep(*args, player=None, line=None, acts=[]):
 
 
 def f_chatprint(line, *args):
+    if isinstance(line, int) and line == 12:
+        f_printError(CurrentPlayer)
     if EUDIf()(Memory(0x57F1B0, Exactly, f_getcurpl())):
         f_updatecpcache()
-        _chatprint_prep(*args, player=CurrentPlayer, line=line)
+        _chatprint_prep(*args, line=line)
     EUDEndIf()
 
 
 def f_chatprintP(player, line, *args):
+    if isinstance(line, int) and line == 12:
+        f_printError(player)
     if EUDIf()(Memory(0x57F1B0, Exactly, player)):
         f_updatecpcache()
-        _chatprint_prep(*args, player=player, line=line,
+        _chatprint_prep(*args, line=line,
                         acts=SetMemory(CP, SetTo, player))
     EUDEndIf()
 
 
 def f_chatprintAll(line, *args):
+    if isinstance(line, int) and line == 12:
+        f_printError(AllPlayers)
     f_updatecpcache()
     f_setlocalcp()
-    _chatprint_prep(*args, player=AllPlayers, line=line)
+    _chatprint_prep(*args, line=line)
 
 
 @EUDFunc
