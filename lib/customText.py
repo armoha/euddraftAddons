@@ -243,12 +243,12 @@ class CPString:
             if a and i < 11:
                 a.append(SetMemory(CP, Add, 1))
                 addr += 1
+                modlength -= 1
         actions.extend([
-            [SetMemory(CP, Add, modlength) if modlength > 0 else []],
+            [SetMemory(CP, Add, modlength) if modlength else []],
             _addcpcache(self.length),
         ])
         actions = FlattenList(actions)
-
         PushTriggerScope()
         for i in range(0, len(actions), 64):
             t = RawTrigger(actions=actions[i: i + 64])
@@ -256,6 +256,9 @@ class CPString:
         PopTriggerScope()
 
         self.valueAddr = [self.trigger[v // 64] + 348 + 32 * (v % 64) for v in self.valueAddr]
+        _nextptr = Forward()
+        self.trigger[-1]._nextptr = _nextptr
+        _nextptr << NextTrigger()
 
     def Display(self, action=[]):
         _next = Forward()
