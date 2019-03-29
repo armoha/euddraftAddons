@@ -9,7 +9,10 @@ from eudplib.core.mapdata.stringmap import ApplyStringMap, strmap
 from eudplib.eudlib.stringf.rwcommon import br1, bw1
 
 """
-customText 0.4.6 by Artanis
+customText 0.4.7 by Artanis
+
+0.4.7
+- Now also supports euddraft 0.8.4.5+
 
 0.4.6
 - Reduced size of CPString.
@@ -75,8 +78,27 @@ STR = chkt.getsection("STR")
 
 
 def onInit():
-    GetStringIndex("@2+4n!")
-    strBuffer = GetStringIndex("\x0D" * 1308)
+    def ForcedAddString(string):
+        string = u2b(string)
+        if not isinstance(string, bytes):
+            raise EPError('Invalid type for string')
+
+        stringindex = len(strmap._dataindextb)
+
+        # Always Create new entry
+        dataindex = len(strmap._datatb)
+        # sstrmap._stringmap[string] = stringindex
+        strmap._datatb.append(string)
+        strmap._dataindextb.append(dataindex)
+        # string + b'\0' + string offset
+        strmap._capacity += len(string) + 1 + 2
+
+        ep_assert(strmap._capacity < 65536, 'String table overflow')
+
+        return stringindex
+
+    filler = ForcedAddString(b'Arta') + 1
+    strBuffer = ForcedAddString(b'\x0D' * 1023) + 1
 
     def _fill():
         # calculate offset of buffer string
@@ -87,22 +109,21 @@ def onInit():
             stroffset.append(outindex)
             outindex += len(s) + 1
         bufferoffset = stroffset[strmap._dataindextb[strBuffer - 1]]
-        if bufferoffset % 4 != 2:
-            strmap._datatb[strmap._dataindextb[strBuffer - 2]] = b"@2+4n!"[
-                0: 4 - bufferoffset % 4
-            ]
-            strmap._capacity -= 2 + bufferoffset % 4
-            ApplyStringMap(chkt)
+
+        from distutils.version import LooseVersion
+
+        if LooseVersion(eudplibVersion()) < LooseVersion("0.58.5"):
+            if bufferoffset % 4 != 2:
+                strmap._datatb[strmap._dataindextb[strBuffer - 2]] = b'Arta'[:4 - bufferoffset % 4]
+                strmap._capacity -= 2 + bufferoffset % 4
+                ApplyStringMap(chkt)
+        else:
+            if bufferoffset % 4 != 0:
+                strmap._datatb[strmap._dataindextb[strBuffer - 2]] = b'Arta'[:4 - bufferoffset % 4]
+                strmap._capacity -= bufferoffset % 4
+                ApplyStringMap(chkt)
 
     RegisterCreatePayloadCallback(_fill)
-
-    def _alert():
-        STR = chkt.getsection("STR")
-        buffer_ptr = b2i2(STR[2 * strBuffer: 2 * strBuffer + 2])
-        if buffer_ptr % 4 >= 1:
-            raise EPError("Parity mismatched")
-
-    atexit.register(_alert)
 
     return strBuffer
 

@@ -445,6 +445,7 @@ def f_fadein(*args, color=None, wait=1, line=-1, reset=True, timer=None):
     key = timer
     add_timer(key)
     timer, counter, ids = timer_dict[key], counter_dict[key], id_dict[key]
+    _end = Forward()
     if isinstance(line, EUDVariable) or (line <= 10 and line >= 0) or line == -1:
         if CurrentPlayerOnly:
             EUDJumpIfNot(Memory(0x6509B0, Exactly, ct.cp), _end)
@@ -558,6 +559,7 @@ def f_fadeout(*args, color=None, wait=1, line=-1, reset=True, timer=None):
     key = timer
     add_timer(key)
     timer, counter, ids = timer_dict[key], counter_dict[key], id_dict[key]
+    _end = Forward()
     if isinstance(line, EUDVariable) or (line <= 10 and line >= 0) or line == -1:
         if CurrentPlayerOnly:
             EUDJumpIfNot(Memory(0x6509B0, Exactly, ct.cp), _end)

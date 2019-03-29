@@ -22,5 +22,6 @@
         "lib/urllib/": true,
         "lib/xml/": true,
         "lib/xmlrpc/": true
-    }
+    },
+    "python.pythonPath": "C:\\Users\\artan\\Miniconda3\\python.exe"
 }
